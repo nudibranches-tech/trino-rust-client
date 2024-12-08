@@ -1,6 +1,6 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Presto, PrestoTy};
+use super::{Context, Trino, TrinoTy};
 
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct FixedChar<const P: usize> {
@@ -13,15 +13,15 @@ impl<const P: usize> FixedChar<P> {
     }
 }
 
-impl<const P: usize> Presto for FixedChar<P> {
+impl<const P: usize> Trino for FixedChar<P> {
     type ValueType<'a> = &'a str;
     type Seed<'a, 'de> = FixedCharSeed<P>;
 
     fn value(&self) -> Self::ValueType<'_> {
         &self.inner
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::Char(P)
+    fn ty() -> TrinoTy {
+        TrinoTy::Char(P)
     }
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
         FixedCharSeed

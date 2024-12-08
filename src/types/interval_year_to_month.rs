@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Error, Presto, PrestoTy};
+use super::{Context, Error, Trino, TrinoTy};
 
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct IntervalYearToMonth {
@@ -47,7 +47,7 @@ impl FromStr for IntervalYearToMonth {
     }
 }
 
-impl Presto for IntervalYearToMonth {
+impl Trino for IntervalYearToMonth {
     type ValueType<'a> = String;
     type Seed<'a, 'de> = IntervalYearToMonthSeed;
 
@@ -55,8 +55,8 @@ impl Presto for IntervalYearToMonth {
         let prefix = if self.negative { "-" } else { "" };
         format!("{}{}-{}", prefix, self.years, self.months)
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::IntervalYearToMonth
+    fn ty() -> TrinoTy {
+        TrinoTy::IntervalYearToMonth
     }
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
         IntervalYearToMonthSeed

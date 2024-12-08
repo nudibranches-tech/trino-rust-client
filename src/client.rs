@@ -11,15 +11,12 @@ use tokio::time::{sleep, Duration};
 
 use crate::auth::Auth;
 use crate::error::{Error, Result};
-#[cfg(not(feature = "presto"))]
 use crate::header::*;
-#[cfg(feature = "presto")]
-use crate::presto_header::*;
 use crate::selected_role::SelectedRole;
 use crate::session::{Session, SessionBuilder};
 use crate::ssl::Ssl;
 use crate::transaction::TransactionId;
-use crate::{DataSet, Presto, QueryResult, Row};
+use crate::{DataSet, Trino, QueryResult, Row};
 
 // TODO:
 // allow_redirects
@@ -392,7 +389,7 @@ fn need_retry(e: &Error) -> bool {
 }
 
 impl Client {
-    pub async fn get_all<T: Presto + 'static>(&self, sql: String) -> Result<DataSet<T>> {
+    pub async fn get_all<T: Trino + 'static>(&self, sql: String) -> Result<DataSet<T>> {
         let res = self.get_retry(sql).await?;
         let mut ret = res.data_set;
 
@@ -426,15 +423,15 @@ impl Client {
         Ok(ExecuteResult { _m: () })
     }
 
-    async fn get_retry<T: Presto + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
+    async fn get_retry<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
         retry!(self, get, sql, self.max_attempt)
     }
 
-    async fn get_next_retry<T: Presto + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
+    async fn get_next_retry<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
         retry!(self, get_next, url, self.max_attempt)
     }
 
-    pub async fn get<T: Presto + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
+    pub async fn get<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
         let req = self.client.post(self.url.clone()).body(sql);
         let req = {
             let session = self.session.read().await;
@@ -452,7 +449,7 @@ impl Client {
         self.send(req).await
     }
 
-    pub async fn get_next<T: Presto + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
+    pub async fn get_next<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
         let req = self.client.get(url);
         let req = {
             let session = self.session.read().await;
@@ -462,7 +459,7 @@ impl Client {
         self.send(req).await
     }
 
-    async fn send<T: Presto + 'static>(&self, req: RequestBuilder) -> Result<QueryResult<T>> {
+    async fn send<T: Trino + 'static>(&self, req: RequestBuilder) -> Result<QueryResult<T>> {
         let resp = req.send().await?;
         let status = resp.status();
         if status != StatusCode::OK {

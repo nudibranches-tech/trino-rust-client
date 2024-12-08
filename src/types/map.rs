@@ -7,11 +7,11 @@ use std::marker::PhantomData;
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, Visitor};
 
 use super::util::SerializeVecMap;
-use super::{Context, Presto, PrestoMapKey, PrestoTy};
+use super::{Context, Trino, TrinoMapKey, TrinoTy};
 
 macro_rules! gen_map {
     ($ty:ident < $($bound:ident ),* >,  $seed:ident) => {
-        impl<K: PrestoMapKey + $($bound+)*, V: Presto> Presto for $ty<K, V> {
+        impl<K: TrinoMapKey + $($bound+)*, V: Trino> Trino for $ty<K, V> {
             // TODO: use impl trait after https://github.com/rust-lang/rust/issues/63063 stablized.
             // type ValueType<'a> = impl Serialize + 'a where K: 'a, V: 'a;
             type ValueType<'a> = SerializeVecMap<K::ValueType<'a>, V::ValueType<'a>> where K: 'a, V: 'a;
@@ -31,12 +31,12 @@ macro_rules! gen_map {
                 }
             }
 
-            fn ty() -> PrestoTy {
-                PrestoTy::Map(Box::new(K::ty()), Box::new(V::ty()))
+            fn ty() -> TrinoTy {
+                TrinoTy::Map(Box::new(K::ty()), Box::new(V::ty()))
             }
 
             fn seed<'a, 'de>(ctx: &'a Context<'a>) -> Self::Seed<'a, 'de> {
-                if let PrestoTy::Map(t1, t2) = ctx.ty() {
+                if let TrinoTy::Map(t1, t2) = ctx.ty() {
                     $seed {
                         ctx,
                         key_ty: &*t1,
@@ -55,12 +55,12 @@ macro_rules! gen_map {
 
         pub struct $seed<'a, K, V> {
             ctx: &'a Context<'a>,
-            key_ty: &'a PrestoTy,
-            value_ty: &'a PrestoTy,
+            key_ty: &'a TrinoTy,
+            value_ty: &'a TrinoTy,
             _marker: PhantomData<(K, V)>,
         }
 
-        impl<'a, 'de, K: PrestoMapKey + $($bound+)*, V: Presto> Visitor<'de> for $seed<'a, K, V> {
+        impl<'a, 'de, K: TrinoMapKey + $($bound+)*, V: Trino> Visitor<'de> for $seed<'a, K, V> {
             type Value = $ty<K, V>;
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("map")
@@ -81,7 +81,7 @@ macro_rules! gen_map {
             }
         }
 
-        impl<'a, 'de, K: PrestoMapKey + $($bound+)*, V: Presto> DeserializeSeed<'de>
+        impl<'a, 'de, K: TrinoMapKey + $($bound+)*, V: Trino> DeserializeSeed<'de>
             for $seed<'a, K, V>
         {
             type Value = $ty<K, V>;

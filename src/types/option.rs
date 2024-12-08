@@ -3,9 +3,9 @@ use std::marker::PhantomData;
 
 use serde::de::{self, DeserializeSeed, Deserializer, Visitor};
 
-use super::{Context, Presto, PrestoTy};
+use super::{Context, Trino, TrinoTy};
 
-impl<T: Presto> Presto for Option<T> {
+impl<T: Trino> Trino for Option<T> {
     type ValueType<'a> = Option<T::ValueType<'a>> where T: 'a;
     type Seed<'a, 'de> = OptionSeed<'a, T>;
 
@@ -13,8 +13,8 @@ impl<T: Presto> Presto for Option<T> {
         self.as_ref().map(|t| t.value())
     }
 
-    fn ty() -> PrestoTy {
-        PrestoTy::Option(Box::new(T::ty()))
+    fn ty() -> TrinoTy {
+        TrinoTy::Option(Box::new(T::ty()))
     }
 
     fn seed<'a, 'de>(ctx: &'a Context) -> Self::Seed<'a, 'de> {
@@ -41,7 +41,7 @@ impl<'a, T> OptionSeed<'a, T> {
     }
 }
 
-impl<'a, 'de, T: Presto> Visitor<'de> for OptionSeed<'a, T> {
+impl<'a, 'de, T: Trino> Visitor<'de> for OptionSeed<'a, T> {
     type Value = Option<T>;
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(T::ty().raw_type().to_str())
@@ -70,7 +70,7 @@ impl<'a, 'de, T: Presto> Visitor<'de> for OptionSeed<'a, T> {
     }
 }
 
-impl<'a, 'de, T: Presto> DeserializeSeed<'de> for OptionSeed<'a, T> {
+impl<'a, 'de, T: Trino> DeserializeSeed<'de> for OptionSeed<'a, T> {
     type Value = Option<T>;
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where

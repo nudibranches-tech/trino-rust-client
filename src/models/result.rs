@@ -1,11 +1,11 @@
 use serde::Deserialize;
 
 use super::*;
-use crate::{DataSet, Presto};
+use crate::{DataSet, Trino};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct QueryResult<T: Presto> {
+pub struct QueryResult<T: Trino> {
     pub id: String,
     pub info_uri: String,
     pub partial_cancel_uri: Option<String>,

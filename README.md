@@ -17,15 +17,15 @@ Fork rationale  :
 ```toml
 # Cargo.toml
 [dependencies]
-trino-rust-client = "1.0.0"
+trino-rust-client = "0.0.1"
 ```
 
 ## Example
 
 ```rust
-use prusto::{ClientBuilder, Presto};
+use trino_rust_client::{ClientBuilder, Trino};
 
-#[derive(Presto, Debug)]
+#[derive(Trino, Debug)]
 struct Foo {
     a: i64,
     b: f64,

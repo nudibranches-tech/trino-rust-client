@@ -1,0 +1,21 @@
+[package]
+name = "trino-rust-client-macros"
+version = "0.3.0"
+authors = ["nudibranches technologies <contact@nudibranches.tech>"]
+edition = "2021"
+description = "trino rust client macros"
+license = "MIT"
+repository = "https://github.com/nudibranches-tech/trino-rust-client"
+homepage = "https://github.com/nudibranches-tech/trino-rust-client"
+documentation = "https://docs.rs/trino-rust-client"
+keywords = ["trino"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = {version = "1.0", features = ["default", "extra-traits", "full"]}
+quote = "1.0"
+proc-macro2 = "1.0"

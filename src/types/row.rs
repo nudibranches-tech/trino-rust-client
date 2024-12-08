@@ -1,7 +1,7 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 use serde_json::Value;
 
-use crate::{Context, Presto, PrestoTy};
+use crate::{Context, Trino, TrinoTy};
 
 #[derive(Debug, Clone)]
 pub struct Row {
@@ -14,7 +14,7 @@ impl Row {
     }
 }
 
-impl Presto for Row {
+impl Trino for Row {
     type ValueType<'a> = &'a [Value];
     type Seed<'a, 'de> = RowSeed;
 
@@ -22,8 +22,8 @@ impl Presto for Row {
         &self.data
     }
 
-    fn ty() -> PrestoTy {
-        PrestoTy::Unknown
+    fn ty() -> TrinoTy {
+        TrinoTy::Unknown
     }
 
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {

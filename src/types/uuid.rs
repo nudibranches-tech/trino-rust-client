@@ -1,17 +1,17 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 use uuid::Uuid;
 
-use super::{Context, Presto, PrestoTy};
+use super::{Context, Trino, TrinoTy};
 
-impl Presto for Uuid {
+impl Trino for Uuid {
     type ValueType<'a> = &'a Uuid;
     type Seed<'a, 'de> = UuidSeed;
 
     fn value(&self) -> Self::ValueType<'_> {
         self
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::Uuid
+    fn ty() -> TrinoTy {
+        TrinoTy::Uuid
     }
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
         UuidSeed

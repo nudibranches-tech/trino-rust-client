@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::io::Read;
 
-use prusto::{Presto, QueryResult, Row};
+use trino_rust_client::{Trino, QueryResult, Row};
 
 fn read(name: &str) -> String {
     let p = "tests/data/models/".to_string() + name;
@@ -13,7 +13,7 @@ fn read(name: &str) -> String {
     buf
 }
 
-#[derive(Presto, PartialEq, Debug, Clone)]
+#[derive(Trino, PartialEq, Debug, Clone)]
 struct A {
     a: String,
     b: i32,
@@ -23,7 +23,7 @@ struct A {
     f: Option<String>,
 }
 
-#[derive(Presto, PartialEq, Debug, Clone)]
+#[derive(Trino, PartialEq, Debug, Clone)]
 struct B {
     x: i64,
     y: f64,

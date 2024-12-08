@@ -2,25 +2,25 @@ use std::fmt;
 
 use serde::de::{self, DeserializeSeed, Deserializer, Visitor};
 
-use super::{Error, Presto, PrestoMapKey, PrestoTy};
+use super::{Error, Trino, TrinoMapKey, TrinoTy};
 
-impl<'b> Presto for &'b str {
+impl<'b> Trino for &'b str {
     type ValueType<'a> = &'a str;
     type Seed<'a, 'de> = StrSeed;
 
     fn value(&self) -> Self::ValueType<'_> {
         *self
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::Varchar
+    fn ty() -> TrinoTy {
+        TrinoTy::Varchar
     }
 
-    fn seed<'a, 'de>(_ty: &'a PrestoTy) -> Result<Self::Seed<'a, 'de>, Error> {
+    fn seed<'a, 'de>(_ty: &'a TrinoTy) -> Result<Self::Seed<'a, 'de>, Error> {
         Ok(StrSeed)
     }
 }
 
-impl<'b> PrestoMapKey for &'b str {}
+impl<'b> TrinoMapKey for &'b str {}
 
 pub struct StrSeed;
 

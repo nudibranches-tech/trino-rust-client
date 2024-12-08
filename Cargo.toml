@@ -5,24 +5,24 @@ authors = ["nudibranches technologies <contact@nudibranches.tech"]
 edition = "2021"
 description = "A trino client library"
 license = "MIT"
-repository = "https://github.com/nooberfsh/prusto"
-homepage = "https://github.com/nooberfsh/prusto"
-documentation = "https://docs.rs/prusto"
+repository = "https://github.com/nudibranches-tech/trino-rust-client"
+homepage = "https://github.com/nudibranches-tech/trino-rust-client"
+documentation = "https://docs.rs/trino-rust-client"
 keywords = ["trino"]
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = [".", "prusto-macros"]
+members = [".", "trino-rust-client-macros"]
 
 [features]
 default = []
-presto = []
+Trino = []
 
 [dependencies]
 # self dependencies
-prusto-macros = { version = "0.2", path = "prusto-macros"}
+trino-rust-client-macros = { version = "0.3", path = "trino-rust-client-macros"}
 # third party dependencies
 serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"

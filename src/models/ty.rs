@@ -4,7 +4,7 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RawPrestoTy {
+pub enum RawTrinoTy {
     BigInt,
     Integer,
     SmallInt,
@@ -35,9 +35,9 @@ pub enum RawPrestoTy {
     Unknown,
 }
 
-impl RawPrestoTy {
+impl RawTrinoTy {
     pub fn to_str(&self) -> &'static str {
-        use RawPrestoTy::*;
+        use RawTrinoTy::*;
         match *self {
             BigInt => "bigint",
             Integer => "integer",
@@ -71,7 +71,7 @@ impl RawPrestoTy {
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        use RawPrestoTy::*;
+        use RawTrinoTy::*;
         let ty = match s {
             "bigint" => BigInt,
             "integer" => Integer,
@@ -107,7 +107,7 @@ impl RawPrestoTy {
     }
 }
 
-impl Serialize for RawPrestoTy {
+impl Serialize for RawTrinoTy {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -116,7 +116,7 @@ impl Serialize for RawPrestoTy {
     }
 }
 
-impl<'de> Deserialize<'de> for RawPrestoTy {
+impl<'de> Deserialize<'de> for RawTrinoTy {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -124,7 +124,7 @@ impl<'de> Deserialize<'de> for RawPrestoTy {
         struct TyVistor;
 
         impl<'de> Visitor<'de> for TyVistor {
-            type Value = RawPrestoTy;
+            type Value = RawTrinoTy;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("need str")
@@ -134,9 +134,9 @@ impl<'de> Deserialize<'de> for RawPrestoTy {
             where
                 E: de::Error,
             {
-                match RawPrestoTy::parse(v) {
+                match RawTrinoTy::parse(v) {
                     Some(d) => Ok(d),
-                    None => Err(E::custom(format!("invalid presto type: {}", v))),
+                    None => Err(E::custom(format!("invalid trino type: {}", v))),
                 }
             }
         }
@@ -151,11 +151,11 @@ mod tests {
 
     #[test]
     fn test_ser() {
-        let ty = RawPrestoTy::Char;
+        let ty = RawTrinoTy::Char;
         let s = serde_json::to_string(&ty).unwrap();
         assert_eq!(s, "\"char\"");
 
-        let ty = RawPrestoTy::Json;
+        let ty = RawTrinoTy::Json;
         let s = serde_json::to_string(&ty).unwrap();
         assert_eq!(s, "\"json\"");
     }
@@ -163,15 +163,15 @@ mod tests {
     #[test]
     fn test_de() {
         let data = "\"char\"";
-        let ty = serde_json::from_str::<RawPrestoTy>(data).unwrap();
-        assert_eq!(ty, RawPrestoTy::Char);
+        let ty = serde_json::from_str::<RawTrinoTy>(data).unwrap();
+        assert_eq!(ty, RawTrinoTy::Char);
 
         let data = "\"json\"";
-        let ty = serde_json::from_str::<RawPrestoTy>(data).unwrap();
-        assert_eq!(ty, RawPrestoTy::Json);
+        let ty = serde_json::from_str::<RawTrinoTy>(data).unwrap();
+        assert_eq!(ty, RawTrinoTy::Json);
 
         let invalid = "\"xxx\"";
-        let res = serde_json::from_str::<RawPrestoTy>(invalid);
+        let res = serde_json::from_str::<RawTrinoTy>(invalid);
         assert!(res.is_err());
     }
 }

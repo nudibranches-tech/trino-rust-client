@@ -3,17 +3,17 @@ use std::str::FromStr;
 
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Presto, PrestoTy};
+use super::{Context, Trino, TrinoTy};
 
-impl Presto for IpAddr {
+impl Trino for IpAddr {
     type ValueType<'a> = &'a IpAddr;
     type Seed<'a, 'de> = IpAddrSeed;
 
     fn value(&self) -> Self::ValueType<'_> {
         self
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::IpAddress
+    fn ty() -> TrinoTy {
+        TrinoTy::IpAddress
     }
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
         IpAddrSeed

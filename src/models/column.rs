@@ -5,7 +5,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::RawPrestoTy;
+use super::RawTrinoTy;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +19,7 @@ pub struct Column {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeSignature {
-    pub raw_type: RawPrestoTy,
+    pub raw_type: RawTrinoTy,
     pub arguments: Vec<ClientTypeSignatureParameter>,
     #[serde(skip)]
     type_arguments: (), // deprecated
@@ -133,7 +133,7 @@ impl<'de> Deserialize<'de> for ClientTypeSignatureParameter {
 }
 
 impl TypeSignature {
-    pub fn new(raw_type: RawPrestoTy, arguments: Vec<ClientTypeSignatureParameter>) -> Self {
+    pub fn new(raw_type: RawTrinoTy, arguments: Vec<ClientTypeSignatureParameter>) -> Self {
         TypeSignature {
             raw_type,
             arguments,
@@ -173,7 +173,7 @@ mod tests {
         assert_eq!(
             s,
             TypeSignature {
-                raw_type: RawPrestoTy::VarChar,
+                raw_type: RawTrinoTy::VarChar,
                 arguments: vec![ClientTypeSignatureParameter::LongLiteral(2147483647)],
                 type_arguments: (),
                 literal_arguments: (),
@@ -211,9 +211,9 @@ mod tests {
         assert_eq!(
             s,
             TypeSignature {
-                raw_type: RawPrestoTy::Map,
+                raw_type: RawTrinoTy::Map,
                 arguments: vec![ClientTypeSignatureParameter::TypeSignature(TypeSignature {
-                    raw_type: RawPrestoTy::VarChar,
+                    raw_type: RawTrinoTy::VarChar,
                     arguments: vec![ClientTypeSignatureParameter::LongLiteral(3)],
                     type_arguments: (),
                     literal_arguments: (),
@@ -255,14 +255,14 @@ mod tests {
         assert_eq!(
             s,
             TypeSignature {
-                raw_type: RawPrestoTy::Row,
+                raw_type: RawTrinoTy::Row,
                 arguments: vec![ClientTypeSignatureParameter::NamedTypeSignature(
                     NamedTypeSignature {
                         field_name: Some(RowFieldName {
                             name: "y".to_string(),
                         }),
                         type_signature: TypeSignature {
-                            raw_type: RawPrestoTy::Double,
+                            raw_type: RawTrinoTy::Double,
                             arguments: vec![],
                             type_arguments: (),
                             literal_arguments: (),

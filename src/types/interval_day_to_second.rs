@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Error, Presto, PrestoTy};
+use super::{Context, Error, Trino, TrinoTy};
 use chrono::{NaiveTime, Timelike};
 
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
@@ -52,7 +52,7 @@ impl FromStr for IntervalDayToSecond {
     }
 }
 
-impl Presto for IntervalDayToSecond {
+impl Trino for IntervalDayToSecond {
     type ValueType<'a> = String;
     type Seed<'a, 'de> = IntervalDayToSecondSeed;
 
@@ -63,8 +63,8 @@ impl Presto for IntervalDayToSecond {
             prefix, self.days, self.hours, self.minutes, self.seconds, self.milliseconds
         )
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::IntervalDayToSecond
+    fn ty() -> TrinoTy {
+        TrinoTy::IntervalDayToSecond
     }
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
         IntervalDayToSecondSeed

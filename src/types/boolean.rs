@@ -1,8 +1,8 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Presto, PrestoMapKey, PrestoTy};
+use super::{Context, Trino, TrinoMapKey, TrinoTy};
 
-impl Presto for bool {
+impl Trino for bool {
     type ValueType<'a> = &'a bool;
     type Seed<'a, 'de> = BoolSeed;
 
@@ -10,8 +10,8 @@ impl Presto for bool {
         self
     }
 
-    fn ty() -> PrestoTy {
-        PrestoTy::Boolean
+    fn ty() -> TrinoTy {
+        TrinoTy::Boolean
     }
 
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
@@ -23,7 +23,7 @@ impl Presto for bool {
     }
 }
 
-impl PrestoMapKey for bool {}
+impl TrinoMapKey for bool {}
 
 pub struct BoolSeed;
 
