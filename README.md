@@ -1,6 +1,14 @@
-# Prusto
+# Trino rust client
 
-A [presto/trino](https://trino.io/) client library written in rust.
+A [trino](https://trino.io/) client library written in rust.
+
+This project have been forked on 08/12/24 from the great : [prusto](https://github.com/nooberfsh/prusto)
+made by @nooberfsh.
+
+Fork rationale  :
+- Remove presto support
+- Add advanced trino features.
+- rename
 
 
 
@@ -9,14 +17,7 @@ A [presto/trino](https://trino.io/) client library written in rust.
 ```toml
 # Cargo.toml
 [dependencies]
-prusto = "0.5"
-```
-
-In order to use this crate as presto client, enable "presto" feature.
-```toml
-# Cargo.toml
-[dependencies]
-prusto = { version = "0.5", features = ["presto"] }
+trino-rust-client = "1.0.0"
 ```
 
 ## Example
