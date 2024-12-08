@@ -28,7 +28,7 @@ serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 derive_more = "0.99"
 bigdecimal = "0.3"
-thiserror = "1.0"
+thiserror = "2.0"
 chrono = "0.4"
 chrono-tz = "0.8"
 iterable = "0.6"
