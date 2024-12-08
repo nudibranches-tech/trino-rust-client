@@ -10,9 +10,9 @@ use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use maplit::{btreemap, hashmap};
 use serde_json::value::Value;
 
-use prusto::types::{DataSet, Decimal};
-use prusto::{Column, FixedChar, IntervalDayToSecond, IntervalYearToMonth, Row};
-use prusto::{Presto, PrestoFloat, PrestoInt, PrestoTy};
+use trino_rust_client::types::{DataSet, Decimal};
+use trino_rust_client::{Column, FixedChar, IntervalDayToSecond, IntervalYearToMonth, Row};
+use trino_rust_client::{Trino, PrestoFloat, PrestoInt, TrinoTy};
 use std::net::IpAddr;
 use uuid::Uuid;
 
@@ -26,7 +26,7 @@ fn read(name: &str) -> (String, Value) {
     (buf, v)
 }
 
-fn assert_ds<T: Presto>(data_set: DataSet<T>, v: Value) {
+fn assert_ds<T: Trino>(data_set: DataSet<T>, v: Value) {
     let data_set = serde_json::to_value(data_set).unwrap();
     let (l_meta, l_data) = split(data_set).unwrap();
     let (r_meta, r_data) = split(v).unwrap();
@@ -66,7 +66,7 @@ fn test_json() {
 
 #[test]
 fn test_char() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: FixedChar<3>,
     }
@@ -82,7 +82,7 @@ fn test_char() {
 
 #[test]
 fn test_interval_year_to_month() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: IntervalYearToMonth,
         b: IntervalYearToMonth,
@@ -102,7 +102,7 @@ fn test_interval_year_to_month() {
 
 #[test]
 fn test_ip_address() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: IpAddr,
         b: IpAddr,
@@ -119,7 +119,7 @@ fn test_ip_address() {
 
 #[test]
 fn test_uuid() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: Uuid,
     }
@@ -138,7 +138,7 @@ fn test_uuid() {
 
 #[test]
 fn test_interval_day_to_second() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: IntervalDayToSecond,
         b: IntervalDayToSecond,
@@ -162,7 +162,7 @@ fn test_interval_day_to_second() {
 
 #[test]
 fn test_option() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: String,
         b: Option<String>,
@@ -199,7 +199,7 @@ fn test_option() {
 
 #[test]
 fn test_seq() {
-    #[derive(Presto, Debug, Clone)]
+    #[derive(Trino, Debug, Clone)]
     struct A {
         a: Vec<i32>,
         b: LinkedList<i32>,
@@ -221,7 +221,7 @@ fn test_seq() {
 
 #[test]
 fn test_seq_other() {
-    #[derive(Presto, Debug, Clone)]
+    #[derive(Trino, Debug, Clone)]
     struct A {
         a: HashSet<i32>,
         b: BTreeSet<i32>,
@@ -246,7 +246,7 @@ fn test_seq_other() {
 
 #[test]
 fn test_map() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: HashMap<String, i32>,
         b: BTreeMap<i32, i32>,
@@ -277,13 +277,13 @@ fn test_map() {
 
 #[test]
 fn test_row() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: B,
         b: i32,
     }
 
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct B {
         x: i32,
         y: i32,
@@ -306,7 +306,7 @@ fn test_row() {
 
 #[test]
 fn test_integer() {
-    #[derive(Presto, Eq, PartialEq, Debug, Clone)]
+    #[derive(Trino, Eq, PartialEq, Debug, Clone)]
     struct A {
         a: i8,
         b: i16,
@@ -341,7 +341,7 @@ fn test_integer() {
 
 #[test]
 fn test_float() {
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct A {
         a: f32,
         b: f64,
@@ -363,7 +363,7 @@ fn test_float() {
 
 #[test]
 fn test_bool() {
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct A {
         a: bool,
         b: bool,
@@ -380,7 +380,7 @@ fn test_bool() {
 
 #[test]
 fn test_date_time() {
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct A {
         a: NaiveDate,
         b: NaiveTime,
@@ -410,7 +410,7 @@ fn test_date_time() {
 
 #[test]
 fn test_decimal() {
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct A {
         a: Decimal<38, 10>,
     }
@@ -430,7 +430,7 @@ fn test_decimal() {
 
 #[test]
 fn test_complex() {
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct A {
         a: String,
         b: i32,
@@ -439,7 +439,7 @@ fn test_complex() {
         e: B,
     }
 
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct B {
         x: i64,
         y: f64,
@@ -451,7 +451,7 @@ fn test_complex() {
     assert_ds(d.clone(), v);
 
     let (t, d) = d.split();
-    let ty = PrestoTy::Row(t);
+    let ty = TrinoTy::Row(t);
     assert_eq!(d.len(), 1);
     assert_eq!(ty, A::ty());
     assert_eq!(
@@ -479,18 +479,18 @@ fn test_complex_row() {
     assert_eq!(
         t,
         vec![
-            ("a".into(), PrestoTy::Varchar),
-            ("b".into(), PrestoTy::PrestoInt(I32)),
-            ("c".into(), PrestoTy::Boolean),
+            ("a".into(), TrinoTy::Varchar),
+            ("b".into(), TrinoTy::PrestoInt(I32)),
+            ("c".into(), TrinoTy::Boolean),
             (
                 "d".into(),
-                PrestoTy::Array(Box::new(PrestoTy::PrestoInt(I32)))
+                TrinoTy::Array(Box::new(TrinoTy::PrestoInt(I32)))
             ),
             (
                 "e".into(),
-                PrestoTy::Row(vec![
-                    ("x".into(), PrestoTy::PrestoInt(I64)),
-                    ("y".into(), PrestoTy::PrestoFloat(F64))
+                TrinoTy::Row(vec![
+                    ("x".into(), TrinoTy::PrestoInt(I64)),
+                    ("y".into(), TrinoTy::PrestoFloat(F64))
                 ])
             ),
         ]
@@ -499,7 +499,7 @@ fn test_complex_row() {
 
 #[test]
 fn test_complex_reorder() {
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct A {
         d: Vec<i32>, //0
         c: bool,     //
@@ -508,7 +508,7 @@ fn test_complex_reorder() {
         a: String, //4
     }
 
-    #[derive(Presto, PartialEq, Debug, Clone)]
+    #[derive(Trino, PartialEq, Debug, Clone)]
     struct B {
         y: f64,
         x: i64,
@@ -519,7 +519,7 @@ fn test_complex_reorder() {
     let d = serde_json::from_str::<DataSet<A>>(&s).unwrap();
 
     let (t, d) = d.split();
-    let ty = PrestoTy::Row(t);
+    let ty = TrinoTy::Row(t);
     assert_eq!(d.len(), 1);
     assert_eq!(ty, A::ty());
     assert_eq!(

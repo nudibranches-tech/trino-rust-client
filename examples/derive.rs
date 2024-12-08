@@ -1,9 +1,9 @@
 use std::env::var;
 
 use dotenv::dotenv;
-use prusto::{ClientBuilder, Presto};
+use trino_rust_client::{ClientBuilder, Trino};
 
-#[derive(Presto, Debug)]
+#[derive(Trino, Debug)]
 struct Foo {
     a: i64,
     b: f64,

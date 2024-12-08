@@ -3,7 +3,7 @@ use quote::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-#[proc_macro_derive(Presto)]
+#[proc_macro_derive(Trino)]
 pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let data = parse_macro_input!(input as ItemStruct);
 
@@ -48,21 +48,21 @@ fn derive_impl(data: ItemStruct) -> Result<TokenStream> {
 
     let impl_trait_block = quote! {
 
-        impl #impl_generics ::prusto::types::Presto for #name #ty_generics #where_clause {
-            type ValueType<'_a> where #(#types: '_a ,)* = ::prusto::tuples::#tuplety< #(<#types1 as ::prusto::types::Presto>::ValueType<'_a>, )* >;
+        impl #impl_generics ::trino_rust_client::types::Trino for #name #ty_generics #where_clause {
+            type ValueType<'_a> where #(#types: '_a ,)* = ::trino_rust_client::tuples::#tuplety< #(<#types1 as ::trino_rust_client::types::Trino>::ValueType<'_a>, )* >;
             type Seed<'_a, '_de> = #seed_name #seed_ty_generics;
 
             fn value(&self) -> Self::ValueType<'_>  {
-                ::prusto::tuples::#tuplety( #(self.#keys.value(), )* )
+                ::trino_rust_client::tuples::#tuplety( #(self.#keys.value(), )* )
             }
 
-            fn ty() -> ::prusto::types::PrestoTy {
-                let types = vec![ #((#keys_lit.into(), <#types2 as ::prusto::types::Presto>::ty())),* ];
-                ::prusto::types::PrestoTy::Row(types)
+            fn ty() -> ::trino_rust_client::types::TrinoTy {
+                let types = vec![ #((#keys_lit.into(), <#types2 as ::trino_rust_client::types::Trino>::ty())),* ];
+                ::trino_rust_client::types::TrinoTy::Row(types)
             }
 
-            fn seed<'_a, '_de>(ctx: &'_a ::prusto::types::Context<'_a>) -> Self::Seed<'_a, '_de> {
-                if let ::prusto::types::PrestoTy::Row(types)  = ctx.ty() {
+            fn seed<'_a, '_de>(ctx: &'_a ::trino_rust_client::types::Context<'_a>) -> Self::Seed<'_a, '_de> {
+                if let ::trino_rust_client::types::TrinoTy::Row(types)  = ctx.ty() {
                     let row_map = ctx.row_map().expect("invalid context");
                     if row_map.len() != types.len() {
                         panic!("invalid context");
@@ -80,14 +80,14 @@ fn derive_impl(data: ItemStruct) -> Result<TokenStream> {
 
             fn empty() -> Self {
                 Self {
-                    #( #keys2:  <#types3 as ::prusto::types::Presto>::empty(),)*
+                    #( #keys2:  <#types3 as ::trino_rust_client::types::Trino>::empty(),)*
                 }
             }
         }
 
         #vis struct #seed_name #seed_impl_generics #where_clause {
-            ctx: &'_a ::prusto::types::Context<'_a>,
-            types: &'_a [(::std::string::String,::prusto::types::PrestoTy)],
+            ctx: &'_a ::trino_rust_client::types::Context<'_a>,
+            types: &'_a [(::std::string::String,::trino_rust_client::types::TrinoTy)],
             row_map: &'_a [usize],
             _marker: ::std::marker::PhantomData<#name #ty_generics>,
         }
@@ -107,7 +107,7 @@ fn derive_impl(data: ItemStruct) -> Result<TokenStream> {
             type Value = #name #ty_generics;
 
             fn expecting(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                formatter.write_str("sequence of same or different presto type")
+                formatter.write_str("sequence of same or different trino type")
             }
 
             fn visit_seq<_A: ::serde::de::SeqAccess<'_de>>(self, mut seq: _A) -> Result<Self::Value, _A::Error> {
@@ -145,12 +145,12 @@ fn access_seq(fields: &[Field], name: &Ident, generics: &Generics) -> Result<Tok
 
     let access_seq = quote! {
         impl #impl_generics #name #ty_generics #where_clause {
-            fn __access_seq<'_a, '_de, _A: ::serde::de::SeqAccess<'_de>>(&mut self, idx: usize, seq: &mut _A, ctx: &'_a ::prusto::types::Context<'_a>)
+            fn __access_seq<'_a, '_de, _A: ::serde::de::SeqAccess<'_de>>(&mut self, idx: usize, seq: &mut _A, ctx: &'_a ::trino_rust_client::types::Context<'_a>)
                 -> ::std::result::Result<(), _A::Error> {
                 match idx {
                     #(
                         #indices => {
-                            let seed = <#types as ::prusto::types::Presto>::seed(ctx);
+                            let seed = <#types as ::trino_rust_client::types::Trino>::seed(ctx);
                             let data = seq.next_element_seed(seed)?;
                             if let Some(data) = data {
                                 self.#keys = data;

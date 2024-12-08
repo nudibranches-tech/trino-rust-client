@@ -6,14 +6,14 @@ use std::marker::PhantomData;
 
 use serde::de::{DeserializeSeed, Deserializer, SeqAccess, Visitor};
 
-use super::{Context, Presto, PrestoTy};
+use super::{Context, Trino, TrinoTy};
 
 macro_rules! gen_seq {
     ($ty:ident,  $insert:ident, $seed:ident) => {
         gen_seq! { $ty<>, $insert, $seed }
     };
     ($ty:ident < $($bound:ident ),* >,  $insert:ident, $seed:ident) => {
-        impl<T: Presto + $($bound+)*> Presto for $ty<T> {
+        impl<T: Trino + $($bound+)*> Trino for $ty<T> {
             // TODO: use impl trait after https://github.com/rust-lang/rust/issues/63063 stablized.
             // type ValueType<'a> = impl Serialize + 'a where T: 'a;
             type ValueType<'a> = Vec<T::ValueType<'a>> where T: 'a;
@@ -31,8 +31,8 @@ macro_rules! gen_seq {
                 self.iter().map(|t| t.value()).collect()
             }
 
-            fn ty() -> PrestoTy {
-                PrestoTy::Array(Box::new(T::ty()))
+            fn ty() -> TrinoTy {
+                TrinoTy::Array(Box::new(T::ty()))
             }
 
             fn seed<'a, 'de>(ctx: &'a Context) -> Self::Seed<'a, 'de> {
@@ -46,14 +46,14 @@ macro_rules! gen_seq {
 
         pub struct $seed<'a, T> {
             ctx: &'a Context<'a>,
-            ty: &'a PrestoTy,
+            ty: &'a TrinoTy,
             _marker: PhantomData<T>,
         }
 
         impl<'a, T> $seed<'a, T> {
             // caller must provide a valid `Context`
             pub(super) fn new(ctx: &'a Context) -> Self {
-                if let PrestoTy::Array(ty) = ctx.ty {
+                if let TrinoTy::Array(ty) = ctx.ty {
                     $seed {
                         ctx,
                         ty: &*ty,
@@ -65,7 +65,7 @@ macro_rules! gen_seq {
             }
         }
 
-        impl<'a, 'de, T: Presto + $($bound+)*> Visitor<'de> for $seed<'a, T> {
+        impl<'a, 'de, T: Trino + $($bound+)*> Visitor<'de> for $seed<'a, T> {
             type Value = $ty<T>;
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("sequence of same presto type")
@@ -83,7 +83,7 @@ macro_rules! gen_seq {
             }
         }
 
-        impl<'a, 'de, T: Presto + $($bound+)*> DeserializeSeed<'de> for $seed<'a, T> {
+        impl<'a, 'de, T: Trino + $($bound+)*> DeserializeSeed<'de> for $seed<'a, T> {
             type Value = $ty<T>;
             fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
             where

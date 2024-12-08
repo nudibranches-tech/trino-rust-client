@@ -4,11 +4,11 @@ use std::fmt;
 use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use serde::de::{self, DeserializeSeed, Deserializer, Visitor};
 
-use super::{Context, Presto, PrestoTy};
+use super::{Context, Trino, TrinoTy};
 
 macro_rules! gen_date_time {
     ($ty:ty, $seed:ident, $pty:expr, $format:expr, $empty:expr, $expect:expr) => {
-        impl Presto for $ty {
+        impl Trino for $ty {
             type ValueType<'a> = String;
             type Seed<'a, 'de> = $seed;
 
@@ -16,7 +16,7 @@ macro_rules! gen_date_time {
                 self.format($format).to_string()
             }
 
-            fn ty() -> PrestoTy {
+            fn ty() -> TrinoTy {
                 $pty
             }
 
@@ -63,7 +63,7 @@ macro_rules! gen_date_time {
 gen_date_time!(
     NaiveDate,
     NaiveDateSeed,
-    PrestoTy::Date,
+    TrinoTy::Date,
     "%Y-%m-%d",
     NaiveDate::from_ymd_opt(1970, 1, 1).unwrap(),
     "naive date"
@@ -71,7 +71,7 @@ gen_date_time!(
 gen_date_time!(
     NaiveDateTime,
     NaiveDateTimeSeed,
-    PrestoTy::Timestamp,
+    TrinoTy::Timestamp,
     "%Y-%m-%d %H:%M:%S%.3f",
     NaiveDate::from_ymd_opt(1970, 1, 1)
         .unwrap()
@@ -82,7 +82,7 @@ gen_date_time!(
 gen_date_time!(
     NaiveTime,
     NaiveTimeSeed,
-    PrestoTy::Time,
+    TrinoTy::Time,
     "%H:%M:%S%.3f",
     NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
     "naive date time"
@@ -90,7 +90,7 @@ gen_date_time!(
 gen_date_time!(
     DateTime<FixedOffset>,
     DateTimeWithZoneSeed,
-    PrestoTy::TimestampWithTimeZone,
+    TrinoTy::TimestampWithTimeZone,
     "%Y-%m-%d %H:%M:%S%.3f %:z",
     DateTime::parse_from_str(
         "1970-01-01 00:00:00.000 +00:00",

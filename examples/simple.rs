@@ -1,7 +1,7 @@
 use std::env::var;
 
 use dotenv::dotenv;
-use prusto::{ClientBuilder, Row};
+use trino_rust_client::{ClientBuilder, Row};
 
 #[tokio::main]
 async fn main() {

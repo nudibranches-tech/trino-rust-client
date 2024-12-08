@@ -18,7 +18,7 @@ members = [".", "trino-rust-client-macros"]
 
 [features]
 default = []
-presto = []
+Trino = []
 
 [dependencies]
 # self dependencies

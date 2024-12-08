@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Error, Presto, PrestoTy};
+use super::{Context, Error, Trino, TrinoTy};
 
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct Decimal<const P: usize, const S: usize> {
@@ -25,15 +25,15 @@ impl<const P: usize, const S: usize> FromStr for Decimal<P, S> {
     }
 }
 
-impl<const P: usize, const S: usize> Presto for Decimal<P, S> {
+impl<const P: usize, const S: usize> Trino for Decimal<P, S> {
     type ValueType<'a> = String;
     type Seed<'a, 'de> = DecimalSeed<P, S>;
 
     fn value(&self) -> Self::ValueType<'_> {
         format!("{}", self.inner)
     }
-    fn ty() -> PrestoTy {
-        PrestoTy::Decimal(P, S)
+    fn ty() -> TrinoTy {
+        TrinoTy::Decimal(P, S)
     }
     fn seed<'a, 'de>(_ctx: &'a Context) -> Self::Seed<'a, 'de> {
         DecimalSeed

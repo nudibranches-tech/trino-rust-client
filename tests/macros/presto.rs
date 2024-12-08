@@ -1,31 +1,31 @@
-use prusto::Presto;
-use prusto::tuples::*;
+use trino_rust_client::Trino;
+use trino_rust_client::tuples::*;
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct Person  {
     name: String,
     age: i32,
 }
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct Group  {
     name: String,
     leader: Person,
 }
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct Foo  {
     name: String,
     bar: i32,
 }
 
-#[derive(Presto)]
-struct Generic<T: Presto>  {
+#[derive(Trino)]
+struct Generic<T: Trino>  {
     name: String,
     t: T,
 }
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct BigStruct {
   a1: i16,
   a2: i16,
@@ -95,7 +95,7 @@ fn test_generic() {
 }
 
 fn test_wrap() {
-    #[derive(Presto)]
+    #[derive(Trino)]
     struct A {
         a: u32,
     }

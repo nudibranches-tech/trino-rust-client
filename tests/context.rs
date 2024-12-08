@@ -1,29 +1,29 @@
 #![allow(incomplete_features)]
 
-use prusto::types::{Context, PrestoTy};
-use prusto::Presto;
+use trino_rust_client::types::{Context, TrinoTy};
+use trino_rust_client::Trino;
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct A {
     a: String,
     b: i32,
     c: String,
 }
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct B {
     b: i32,
     c: String,
     a: String,
 }
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct C {
     a: A,
     b: i32,
 }
 
-#[derive(Presto)]
+#[derive(Trino)]
 struct D {
     b: i32,
     a: B,
@@ -46,7 +46,7 @@ fn test_nested() {
     let ret = ctx.row_map().unwrap();
     assert_eq!(ret, &[1, 0]);
 
-    if let PrestoTy::Row(rows) = &provided {
+    if let TrinoTy::Row(rows) = &provided {
         assert_eq!(rows.len(), 2);
 
         let ty = &rows[1].1;

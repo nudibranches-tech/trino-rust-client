@@ -1,9 +1,9 @@
-use crate::{Context, Presto, PrestoTy};
+use crate::{Context, Trino, TrinoTy};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
-impl Presto for Value {
+impl Trino for Value {
     type ValueType<'a> = &'a Value;
     type Seed<'a, 'de> = ValueSeed;
 
@@ -11,8 +11,8 @@ impl Presto for Value {
         self
     }
 
-    fn ty() -> PrestoTy {
-        PrestoTy::Json
+    fn ty() -> TrinoTy {
+        TrinoTy::Json
     }
 
     fn seed<'a, 'de>(_: &'a Context<'a>) -> Self::Seed<'a, 'de> {

@@ -1,10 +1,10 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Presto, PrestoFloat, PrestoMapKey, PrestoTy};
+use super::{Context, Trino, PrestoFloat, TrinoMapKey, TrinoTy};
 
 macro_rules! gen_float {
     ($ty:ty, $seed:ident, $pty:expr) => {
-        impl Presto for $ty {
+        impl Trino for $ty {
             type ValueType<'a> = &'a $ty;
             type Seed<'a, 'de> = $seed;
 
@@ -12,7 +12,7 @@ macro_rules! gen_float {
                 self
             }
 
-            fn ty() -> PrestoTy {
+            fn ty() -> TrinoTy {
                 $pty
             }
 
@@ -25,7 +25,7 @@ macro_rules! gen_float {
             }
         }
 
-        impl PrestoMapKey for $ty {}
+        impl TrinoMapKey for $ty {}
 
         pub struct $seed;
 
@@ -42,5 +42,5 @@ macro_rules! gen_float {
 }
 
 use PrestoFloat::*;
-gen_float!(f32, F32Seed, PrestoTy::PrestoFloat(F32));
-gen_float!(f64, F64Seed, PrestoTy::PrestoFloat(F64));
+gen_float!(f32, F32Seed, TrinoTy::PrestoFloat(F32));
+gen_float!(f64, F64Seed, TrinoTy::PrestoFloat(F64));
