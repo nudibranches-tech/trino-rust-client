@@ -12,7 +12,7 @@ use serde_json::value::Value;
 
 use trino_rust_client::types::{DataSet, Decimal};
 use trino_rust_client::{Column, FixedChar, IntervalDayToSecond, IntervalYearToMonth, Row};
-use trino_rust_client::{Trino, PrestoFloat, PrestoInt, TrinoTy};
+use trino_rust_client::{Trino, TrinoFloat, TrinoInt, TrinoTy};
 use std::net::IpAddr;
 use uuid::Uuid;
 
@@ -468,8 +468,8 @@ fn test_complex() {
 
 #[test]
 fn test_complex_row() {
-    use PrestoFloat::*;
-    use PrestoInt::*;
+    use TrinoFloat::*;
+    use TrinoInt::*;
 
     let (s, v) = read("complex");
     let d = serde_json::from_str::<DataSet<Row>>(&s).unwrap();
@@ -480,17 +480,17 @@ fn test_complex_row() {
         t,
         vec![
             ("a".into(), TrinoTy::Varchar),
-            ("b".into(), TrinoTy::PrestoInt(I32)),
+            ("b".into(), TrinoTy::TrinoInt(I32)),
             ("c".into(), TrinoTy::Boolean),
             (
                 "d".into(),
-                TrinoTy::Array(Box::new(TrinoTy::PrestoInt(I32)))
+                TrinoTy::Array(Box::new(TrinoTy::TrinoInt(I32)))
             ),
             (
                 "e".into(),
                 TrinoTy::Row(vec![
-                    ("x".into(), TrinoTy::PrestoInt(I64)),
-                    ("y".into(), TrinoTy::PrestoFloat(F64))
+                    ("x".into(), TrinoTy::TrinoInt(I64)),
+                    ("y".into(), TrinoTy::TrinoFloat(F64))
                 ])
             ),
         ]

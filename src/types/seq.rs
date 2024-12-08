@@ -68,7 +68,7 @@ macro_rules! gen_seq {
         impl<'a, 'de, T: Trino + $($bound+)*> Visitor<'de> for $seed<'a, T> {
             type Value = $ty<T>;
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("sequence of same presto type")
+                formatter.write_str("sequence of same trino type")
             }
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where

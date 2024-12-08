@@ -60,8 +60,8 @@ pub enum Error {
     ParseDecimalFailed(String),
     ParseIntervalMonthFailed,
     ParseIntervalDayFailed,
-    EmptyInPrestoRow,
-    NonePrestoRow,
+    EmptyInTrinoRow,
+    NoneTrinoRow,
 }
 
 pub trait Trino {
@@ -131,8 +131,8 @@ fn extract(target: &TrinoTy, provided: &TrinoTy) -> Result<Vec<(usize, Vec<usize
         (TimestampWithTimeZone, TimestampWithTimeZone) => Ok(vec![]),
         (IntervalYearToMonth, IntervalYearToMonth) => Ok(vec![]),
         (IntervalDayToSecond, IntervalDayToSecond) => Ok(vec![]),
-        (PrestoInt(_), PrestoInt(_)) => Ok(vec![]),
-        (PrestoFloat(_), PrestoFloat(_)) => Ok(vec![]),
+        (TrinoInt(_), TrinoInt(_)) => Ok(vec![]),
+        (TrinoFloat(_), TrinoFloat(_)) => Ok(vec![]),
         (Varchar, Varchar) => Ok(vec![]),
         (Char(a), Char(b)) if a == b => Ok(vec![]),
         (Tuple(t1), Tuple(t2)) => {
@@ -189,8 +189,8 @@ pub enum TrinoTy {
     IntervalDayToSecond,
     Option(Box<TrinoTy>),
     Boolean,
-    PrestoInt(PrestoInt),
-    PrestoFloat(PrestoFloat),
+    TrinoInt(TrinoInt),
+    TrinoFloat(TrinoFloat),
     Varchar,
     Char(usize),
     Tuple(Vec<TrinoTy>),
@@ -204,7 +204,7 @@ pub enum TrinoTy {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum PrestoInt {
+pub enum TrinoInt {
     I8,
     I16,
     I32,
@@ -212,15 +212,15 @@ pub enum PrestoInt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum PrestoFloat {
+pub enum TrinoFloat {
     F32,
     F64,
 }
 
 impl TrinoTy {
     pub fn from_type_signature(mut sig: TypeSignature) -> Result<Self, Error> {
-        use PrestoFloat::*;
-        use PrestoInt::*;
+        use TrinoFloat::*;
+        use TrinoInt::*;
 
         let ty = match sig.raw_type {
             RawTrinoTy::Date => TrinoTy::Date,
@@ -245,12 +245,12 @@ impl TrinoTy {
                 }
             }
             RawTrinoTy::Boolean => TrinoTy::Boolean,
-            RawTrinoTy::TinyInt => TrinoTy::PrestoInt(I8),
-            RawTrinoTy::SmallInt => TrinoTy::PrestoInt(I16),
-            RawTrinoTy::Integer => TrinoTy::PrestoInt(I32),
-            RawTrinoTy::BigInt => TrinoTy::PrestoInt(I64),
-            RawTrinoTy::Real => TrinoTy::PrestoFloat(F32),
-            RawTrinoTy::Double => TrinoTy::PrestoFloat(F64),
+            RawTrinoTy::TinyInt => TrinoTy::TrinoInt(I8),
+            RawTrinoTy::SmallInt => TrinoTy::TrinoInt(I16),
+            RawTrinoTy::Integer => TrinoTy::TrinoInt(I32),
+            RawTrinoTy::BigInt => TrinoTy::TrinoInt(I64),
+            RawTrinoTy::Real => TrinoTy::TrinoFloat(F32),
+            RawTrinoTy::Double => TrinoTy::TrinoFloat(F64),
             RawTrinoTy::VarChar => TrinoTy::Varchar,
             RawTrinoTy::Char if sig.arguments.len() == 1 => {
                 if let ClientTypeSignatureParameter::LongLiteral(p) = sig.arguments.pop().unwrap() {
@@ -353,8 +353,8 @@ impl TrinoTy {
             IntervalDayToSecond => vec![],
             Option(t) => return t.into_type_signature(),
             Boolean => vec![],
-            PrestoInt(_) => vec![],
-            PrestoFloat(_) => vec![],
+            TrinoInt(_) => vec![],
+            TrinoFloat(_) => vec![],
             Varchar => vec![ClientTypeSignatureParameter::LongLiteral(2147483647)],
             Char(a) => vec![ClientTypeSignatureParameter::LongLiteral(a as u64)],
             Tuple(ts) => ts.map(|ty| {
@@ -399,8 +399,8 @@ impl TrinoTy {
             IntervalYearToMonth => RawTrinoTy::IntervalYearToMonth.to_str().into(),
             IntervalDayToSecond => RawTrinoTy::IntervalDayToSecond.to_str().into(),
             Boolean => RawTrinoTy::Boolean.to_str().into(),
-            PrestoInt(ty) => ty.raw_type().to_str().into(),
-            PrestoFloat(ty) => ty.raw_type().to_str().into(),
+            TrinoInt(ty) => ty.raw_type().to_str().into(),
+            TrinoFloat(ty) => ty.raw_type().to_str().into(),
             Varchar => RawTrinoTy::VarChar.to_str().into(),
             Char(a) => format!("{}({})", RawTrinoTy::Char.to_str(), a).into(),
             Tuple(ts) => format!(
@@ -445,8 +445,8 @@ impl TrinoTy {
             Decimal(_, _) => RawTrinoTy::Decimal,
             Option(ty) => ty.raw_type(),
             Boolean => RawTrinoTy::Boolean,
-            PrestoInt(ty) => ty.raw_type(),
-            PrestoFloat(ty) => ty.raw_type(),
+            TrinoInt(ty) => ty.raw_type(),
+            TrinoFloat(ty) => ty.raw_type(),
             Varchar => RawTrinoTy::VarChar,
             Char(_) => RawTrinoTy::Char,
             Tuple(_) => RawTrinoTy::Row,
@@ -460,9 +460,9 @@ impl TrinoTy {
     }
 }
 
-impl PrestoInt {
+impl TrinoInt {
     pub fn raw_type(&self) -> RawTrinoTy {
-        use PrestoInt::*;
+        use TrinoInt::*;
         match self {
             I8 => RawTrinoTy::TinyInt,
             I16 => RawTrinoTy::SmallInt,
@@ -472,9 +472,9 @@ impl PrestoInt {
     }
 }
 
-impl PrestoFloat {
+impl TrinoFloat {
     pub fn raw_type(&self) -> RawTrinoTy {
-        use PrestoFloat::*;
+        use TrinoFloat::*;
         match self {
             F32 => RawTrinoTy::Real,
             F64 => RawTrinoTy::Double,

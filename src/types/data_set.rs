@@ -22,12 +22,12 @@ impl<T: Trino> DataSet<T> {
         let types = match T::ty() {
             TrinoTy::Row(r) => {
                 if r.is_empty() {
-                    return Err(Error::EmptyInPrestoRow);
+                    return Err(Error::EmptyInTrinoRow);
                 } else {
                     r
                 }
             }
-            _ => return Err(Error::NonePrestoRow),
+            _ => return Err(Error::NoneTrinoRow),
         };
 
         Ok(DataSet { types, data })
@@ -61,7 +61,7 @@ impl<T: Trino> DataSet<T> {
 impl DataSet<Row> {
     pub fn new_row(types: Vec<(String, TrinoTy)>, data: Vec<Row>) -> Result<Self, Error> {
         if types.is_empty() {
-            return Err(Error::EmptyInPrestoRow);
+            return Err(Error::EmptyInTrinoRow);
         }
         Ok(DataSet { types, data })
     }
@@ -134,7 +134,7 @@ impl<'de, T: Trino> Deserialize<'de> for DataSet<T> {
                 let types = if let Some(Field::Columns) = map.next_key()? {
                     let columns: Vec<Column> = map.next_value()?;
                     columns.try_map(TrinoTy::from_column).map_err(|e| {
-                        de::Error::custom(format!("deserialize presto type failed, reason: {}", e))
+                        de::Error::custom(format!("deserialize trino type failed, reason: {}", e))
                     })?
                 } else {
                     return Err(de::Error::missing_field("columns"));
@@ -142,7 +142,7 @@ impl<'de, T: Trino> Deserialize<'de> for DataSet<T> {
 
                 let array_ty = TrinoTy::Array(Box::new(TrinoTy::Row(types.clone())));
                 let ctx = Context::new::<Vec<T>>(&array_ty).map_err(|e| {
-                    de::Error::custom(format!("invalid presto type, reason: {}", e))
+                    de::Error::custom(format!("invalid trino type, reason: {}", e))
                 })?;
                 let seed = VecSeed::new(&ctx);
 

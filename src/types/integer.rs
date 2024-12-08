@@ -1,6 +1,6 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Trino, PrestoInt, TrinoMapKey, TrinoTy};
+use super::{Context, Trino, TrinoInt, TrinoMapKey, TrinoTy};
 
 macro_rules! gen_int {
     ($ty:ty, $seed:ident, $pty:expr) => {
@@ -41,14 +41,14 @@ macro_rules! gen_int {
     };
 }
 
-use PrestoInt::*;
-gen_int!(i8, I8Seed, TrinoTy::PrestoInt(I8));
-gen_int!(i16, I16Seed, TrinoTy::PrestoInt(I16));
-gen_int!(i32, I32Seed, TrinoTy::PrestoInt(I32));
-gen_int!(i64, I64Seed, TrinoTy::PrestoInt(I64));
+use TrinoInt::*;
+gen_int!(i8, I8Seed, TrinoTy::TrinoInt(I8));
+gen_int!(i16, I16Seed, TrinoTy::TrinoInt(I16));
+gen_int!(i32, I32Seed, TrinoTy::TrinoInt(I32));
+gen_int!(i64, I64Seed, TrinoTy::TrinoInt(I64));
 
-//TODO: u64's presto type is i64, it may > i64::max, same as u8, u16, u32
-gen_int!(u8, U8Seed, TrinoTy::PrestoInt(I8));
-gen_int!(u16, U16Seed, TrinoTy::PrestoInt(I16));
-gen_int!(u32, U32Seed, TrinoTy::PrestoInt(I32));
-gen_int!(u64, U64Seed, TrinoTy::PrestoInt(I64));
+//TODO: u64's trino type is i64, it may > i64::max, same as u8, u16, u32
+gen_int!(u8, U8Seed, TrinoTy::TrinoInt(I8));
+gen_int!(u16, U16Seed, TrinoTy::TrinoInt(I16));
+gen_int!(u32, U32Seed, TrinoTy::TrinoInt(I32));
+gen_int!(u64, U64Seed, TrinoTy::TrinoInt(I64));

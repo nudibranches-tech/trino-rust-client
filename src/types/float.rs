@@ -1,6 +1,6 @@
 use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 
-use super::{Context, Trino, PrestoFloat, TrinoMapKey, TrinoTy};
+use super::{Context, Trino, TrinoFloat, TrinoMapKey, TrinoTy};
 
 macro_rules! gen_float {
     ($ty:ty, $seed:ident, $pty:expr) => {
@@ -41,6 +41,6 @@ macro_rules! gen_float {
     };
 }
 
-use PrestoFloat::*;
-gen_float!(f32, F32Seed, TrinoTy::PrestoFloat(F32));
-gen_float!(f64, F64Seed, TrinoTy::PrestoFloat(F64));
+use TrinoFloat::*;
+gen_float!(f32, F32Seed, TrinoTy::TrinoFloat(F32));
+gen_float!(f64, F64Seed, TrinoTy::TrinoFloat(F64));

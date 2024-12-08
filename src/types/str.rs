@@ -2,9 +2,9 @@ use std::fmt;
 
 use serde::de::{self, DeserializeSeed, Deserializer, Visitor};
 
-use super::{Error, Presto, PrestoMapKey, TrinoTy};
+use super::{Error, Trino, TrinoMapKey, TrinoTy};
 
-impl<'b> Presto for &'b str {
+impl<'b> Trino for &'b str {
     type ValueType<'a> = &'a str;
     type Seed<'a, 'de> = StrSeed;
 
@@ -20,7 +20,7 @@ impl<'b> Presto for &'b str {
     }
 }
 
-impl<'b> PrestoMapKey for &'b str {}
+impl<'b> TrinoMapKey for &'b str {}
 
 pub struct StrSeed;
 

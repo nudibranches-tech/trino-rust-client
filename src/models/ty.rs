@@ -136,7 +136,7 @@ impl<'de> Deserialize<'de> for RawTrinoTy {
             {
                 match RawTrinoTy::parse(v) {
                     Some(d) => Ok(d),
-                    None => Err(E::custom(format!("invalid presto type: {}", v))),
+                    None => Err(E::custom(format!("invalid trino type: {}", v))),
                 }
             }
         }
