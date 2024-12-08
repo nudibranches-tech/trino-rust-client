@@ -17,7 +17,7 @@ Fork rationale  :
 ```toml
 # Cargo.toml
 [dependencies]
-trino-rust-client = "1.0.0"
+trino-rust-client = "0.0.1"
 ```
 
 ## Example

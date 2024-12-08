@@ -19,5 +19,5 @@ pub mod types;
 
 pub use client::*;
 pub use models::*;
-pub use prusto_macros::*;
+pub use trino_rust_client_macros::*;
 pub use types::*;
