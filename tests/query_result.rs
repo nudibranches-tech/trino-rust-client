@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::io::Read;
 
-use trino_rust_client::{Trino, QueryResult, Row};
+use trino_rust_client::{QueryResult, Row, Trino};
 
 fn read(name: &str) -> String {
     let p = "tests/data/models/".to_string() + name;

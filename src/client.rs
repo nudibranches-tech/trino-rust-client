@@ -9,7 +9,7 @@ use log::*;
 use reqwest::header::HeaderValue;
 use reqwest::{RequestBuilder, Response, Url};
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
 
 use crate::auth::Auth;
 use crate::error::{Error, Result};
@@ -413,21 +413,13 @@ impl Client {
     async fn get_retry<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
         let result = || async { self.get::<T>(sql.clone()).await };
 
-        result
-            .retry(
-                self.retry_policy(),
-            )
-            .await
+        result.retry(self.retry_policy()).when(need_retry).await
     }
 
     async fn get_next_retry<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
         let result = || async { self.get_next(url).await };
 
-        result
-            .retry(
-                self.retry_policy(),
-            )
-            .await
+        result.retry(self.retry_policy()).when(need_retry).await
     }
 
     pub async fn get<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {

@@ -6,7 +6,10 @@ use serde::de::{self, DeserializeSeed, Deserializer, Visitor};
 use super::{Context, Trino, TrinoTy};
 
 impl<T: Trino> Trino for Option<T> {
-    type ValueType<'a> = Option<T::ValueType<'a>> where T: 'a;
+    type ValueType<'a>
+        = Option<T::ValueType<'a>>
+    where
+        T: 'a;
     type Seed<'a, 'de> = OptionSeed<'a, T>;
 
     fn value(&self) -> Self::ValueType<'_> {
@@ -41,7 +44,7 @@ impl<'a, T> OptionSeed<'a, T> {
     }
 }
 
-impl<'a, 'de, T: Trino> Visitor<'de> for OptionSeed<'a, T> {
+impl<'de, T: Trino> Visitor<'de> for OptionSeed<'_, T> {
     type Value = Option<T>;
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(T::ty().raw_type().to_str())
@@ -70,7 +73,7 @@ impl<'a, 'de, T: Trino> Visitor<'de> for OptionSeed<'a, T> {
     }
 }
 
-impl<'a, 'de, T: Trino> DeserializeSeed<'de> for OptionSeed<'a, T> {
+impl<'de, T: Trino> DeserializeSeed<'de> for OptionSeed<'_, T> {
     type Value = Option<T>;
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
