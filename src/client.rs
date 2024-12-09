@@ -225,6 +225,7 @@ impl ClientBuilder {
 }
 
 fn add_prepare_header(mut builder: RequestBuilder, session: &Session) -> RequestBuilder {
+    //FIXME : set trino user from jwt ?
     builder = builder.header(HEADER_USER, &session.user);
     // TODO: difference with session.source?
     builder = builder.header(USER_AGENT, "trino-rust-client");
@@ -370,17 +371,13 @@ fn need_retry(e: &Error) -> bool {
 }
 
 impl Client {
-    pub async fn get_all<T: Trino + 'static>(
-        &self,
-        sql: String,
-        access_token: Option<String>,
-    ) -> Result<DataSet<T>> {
-        let res = self.get_retry(sql, access_token.clone()).await?;
+    pub async fn get_all<T: Trino + 'static>(&self, sql: String) -> Result<DataSet<T>> {
+        let res = self.get_retry(sql).await?;
         let mut ret = res.data_set;
 
         let mut next = res.next_uri;
         while let Some(url) = &next {
-            let res = self.get_next_retry(url, access_token.clone()).await?;
+            let res = self.get_next_retry(url).await?;
             next = res.next_uri;
             if let Some(d) = res.data_set {
                 match &mut ret {
@@ -397,18 +394,12 @@ impl Client {
         }
     }
 
-    pub async fn execute(
-        &self,
-        sql: String,
-        access_token: Option<String>,
-    ) -> Result<ExecuteResult> {
-        let res = self.get_retry::<Row>(sql, access_token.clone()).await?;
+    pub async fn execute(&self, sql: String) -> Result<ExecuteResult> {
+        let res = self.get_retry::<Row>(sql).await?;
 
         let mut next = res.next_uri;
         while let Some(url) = &next {
-            let res = self
-                .get_next_retry::<Row>(url, access_token.clone())
-                .await?;
+            let res = self.get_next_retry::<Row>(url).await?;
             next = res.next_uri;
         }
         Ok(ExecuteResult { _m: () })
@@ -420,62 +411,45 @@ impl Client {
             .with_max_delay(Duration::from_secs(2))
     }
 
-    async fn get_retry<T: Trino + 'static>(
-        &self,
-        sql: String,
-        access_token: Option<String>,
-    ) -> Result<QueryResult<T>> {
-        let result = || async { self.get::<T>(sql.clone(), access_token.clone()).await };
+    async fn get_retry<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
+        let result = || async { self.get::<T>(sql.clone()).await };
 
         result.retry(self.retry_policy()).when(need_retry).await
     }
 
-    async fn get_next_retry<T: Trino + 'static>(
-        &self,
-        url: &str,
-        access_token: Option<String>,
-    ) -> Result<QueryResult<T>> {
-        let result = || async { self.get_next(url, access_token.clone()).await };
+    async fn get_next_retry<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
+        let result = || async { self.get_next(url).await };
 
         result.retry(self.retry_policy()).when(need_retry).await
     }
 
-    pub async fn get<T: Trino + 'static>(
-        &self,
-        sql: String,
-        access_token: Option<String>,
-    ) -> Result<QueryResult<T>> {
+    pub async fn get<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
         let req = self.client.post(self.url.clone()).body(sql);
         let req = {
             let session = self.session.read().await;
             add_session_header(req, &session)
         };
 
-        let req = self.auth_req(req, access_token);
+        let req = self.auth_req(req);
         self.send(req).await
     }
 
-    pub async fn get_next<T: Trino + 'static>(
-        &self,
-        url: &str,
-        access_token: Option<String>,
-    ) -> Result<QueryResult<T>> {
+    pub async fn get_next<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
         let req = self.client.get(url);
         let req = {
             let session = self.session.read().await;
             add_prepare_header(req, &session)
         };
 
-        let req = self.auth_req(req, access_token);
+        let req = self.auth_req(req);
         self.send(req).await
     }
 
-    fn auth_req(&self, req: RequestBuilder, access_token: Option<String>) -> RequestBuilder {
-        if let Some(t) = access_token {
-            req.bearer_auth(t)
-        } else if let Some(auth) = self.auth.as_ref() {
+    fn auth_req(&self, req: RequestBuilder) -> RequestBuilder {
+        if let Some(auth) = self.auth.as_ref() {
             match auth {
                 Auth::Basic(u, p) => req.basic_auth(u, p.as_ref()),
+                Auth::Jwt(t) => req.bearer_auth(t),
             }
         } else {
             req
