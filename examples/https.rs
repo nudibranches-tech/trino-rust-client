@@ -28,7 +28,7 @@ async fn main() {
         .build()
         .unwrap();
 
-    let data = cli.get_all::<Row>(sql).await.unwrap().into_vec();
+    let data = cli.get_all::<Row>(sql, None).await.unwrap().into_vec();
 
     for r in data {
         println!("{:?}", r)
