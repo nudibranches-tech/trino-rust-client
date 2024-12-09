@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use backon::ExponentialBuilder;
+use backon::Retryable;
 use http::header::{ACCEPT_ENCODING, USER_AGENT};
 use http::StatusCode;
 use iterable::*;
@@ -16,7 +18,7 @@ use crate::selected_role::SelectedRole;
 use crate::session::{Session, SessionBuilder};
 use crate::ssl::Ssl;
 use crate::transaction::TransactionId;
-use crate::{DataSet, Trino, QueryResult, Row};
+use crate::{DataSet, QueryResult, Row, Trino};
 
 // TODO:
 // allow_redirects
@@ -300,27 +302,6 @@ fn add_header_map<'a>(
     builder
 }
 
-macro_rules! retry {
-    ($self:expr, $f:ident, $param:expr, $max_attempt:expr) => {{
-        for _ in 0..$max_attempt {
-            let res = $self.$f($param.clone()).await;
-            match res {
-                Ok(d) => match d.error {
-                    Some(e) => return Err(Error::QueryError(e)),
-                    None => return Ok(d),
-                },
-                Err(e) if need_retry(&e) => {
-                    sleep(Duration::from_millis(100)).await;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        Err(Error::ReachMaxAttempt($max_attempt))
-    }};
-}
-
 macro_rules! set_header {
     ($session:expr, $header:expr, $resp:expr) => {
         set_header!($session, $header, $resp, |x: &str| Some(Some(
@@ -423,12 +404,30 @@ impl Client {
         Ok(ExecuteResult { _m: () })
     }
 
+    fn retry_policy(&self) -> ExponentialBuilder {
+        ExponentialBuilder::default()
+            .with_max_times(self.max_attempt)
+            .with_max_delay(Duration::from_secs(2))
+    }
+
     async fn get_retry<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
-        retry!(self, get, sql, self.max_attempt)
+        let result = || async { self.get::<T>(sql.clone()).await };
+
+        result
+            .retry(
+                self.retry_policy(),
+            )
+            .await
     }
 
     async fn get_next_retry<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
-        retry!(self, get_next, url, self.max_attempt)
+        let result = || async { self.get_next(url).await };
+
+        result
+            .retry(
+                self.retry_policy(),
+            )
+            .await
     }
 
     pub async fn get<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
