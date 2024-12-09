@@ -1,4 +1,5 @@
 [dependencies]
+backon = "1.3.0"
 bigdecimal = "0.4.6"
 chrono = "0.4"
 chrono-tz = "0.10"
@@ -21,7 +22,6 @@ tokio = {version = "1.16", features = ["full"]}
 trino-rust-client-macros = {version = "0.4", path = "trino-rust-client-macros"}
 urlencoding = "2.1"
 uuid = {version = "1.2", features = ["serde", "v4"]}
-backon = "1.3.0"
 
 [dev-dependencies]
 dotenv = "0.15"
