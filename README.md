@@ -12,7 +12,7 @@ Fork rationale  :
 
 
 
-## Installation 
+## Installation
 
 ```toml
 # Cargo.toml

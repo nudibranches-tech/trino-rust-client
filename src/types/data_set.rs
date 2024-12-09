@@ -141,9 +141,8 @@ impl<'de, T: Trino> Deserialize<'de> for DataSet<T> {
                 };
 
                 let array_ty = TrinoTy::Array(Box::new(TrinoTy::Row(types.clone())));
-                let ctx = Context::new::<Vec<T>>(&array_ty).map_err(|e| {
-                    de::Error::custom(format!("invalid trino type, reason: {}", e))
-                })?;
+                let ctx = Context::new::<Vec<T>>(&array_ty)
+                    .map_err(|e| de::Error::custom(format!("invalid trino type, reason: {}", e)))?;
                 let seed = VecSeed::new(&ctx);
 
                 let data = if let Some(Field::Data) = map.next_key()? {

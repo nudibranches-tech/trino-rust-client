@@ -10,10 +10,10 @@ use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use maplit::{btreemap, hashmap};
 use serde_json::value::Value;
 
+use std::net::IpAddr;
 use trino_rust_client::types::{DataSet, Decimal};
 use trino_rust_client::{Column, FixedChar, IntervalDayToSecond, IntervalYearToMonth, Row};
 use trino_rust_client::{Trino, TrinoFloat, TrinoInt, TrinoTy};
-use std::net::IpAddr;
 use uuid::Uuid;
 
 fn read(name: &str) -> (String, Value) {
@@ -154,7 +154,7 @@ fn test_interval_day_to_second() {
     let d = d.into_vec();
     assert_eq!(d.len(), 1);
     assert_eq!(d[0].a.total_seconds(), 123 * 24 * 3600);
-    assert_eq!(d[0].b.total_seconds(), 1 * 24 * 3600 * -1);
+    assert_eq!(d[0].b.total_seconds(), -(24 * 3600));
     assert_eq!(d[0].c.total_seconds(), 13 * 3600);
     assert_eq!(d[0].d.total_seconds(), 11 * 60);
     assert_eq!(d[0].e.total_seconds(), 611);
@@ -482,10 +482,7 @@ fn test_complex_row() {
             ("a".into(), TrinoTy::Varchar),
             ("b".into(), TrinoTy::TrinoInt(I32)),
             ("c".into(), TrinoTy::Boolean),
-            (
-                "d".into(),
-                TrinoTy::Array(Box::new(TrinoTy::TrinoInt(I32)))
-            ),
+            ("d".into(), TrinoTy::Array(Box::new(TrinoTy::TrinoInt(I32)))),
             (
                 "e".into(),
                 TrinoTy::Row(vec![

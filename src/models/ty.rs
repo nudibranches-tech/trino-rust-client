@@ -123,7 +123,7 @@ impl<'de> Deserialize<'de> for RawTrinoTy {
     {
         struct TyVistor;
 
-        impl<'de> Visitor<'de> for TyVistor {
+        impl Visitor<'_> for TyVistor {
             type Value = RawTrinoTy;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

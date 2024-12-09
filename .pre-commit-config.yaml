@@ -1,0 +1,25 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  - id: no-commit-to-branch # Prevent commiting to main or master
+  - id: trailing-whitespace
+    exclude: .*\.(ts|rs)$
+  - id: end-of-file-fixer
+    exclude: .*\.(ts|rs)$
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.14.0
+  hooks:
+  - id: pretty-format-toml
+    args: [ --autofix ]
+    exclude: ^.*Cargo.lock
+
+# Rust
+- repo: https://github.com/doublify/pre-commit-rust
+  rev: v1.0
+  hooks:
+  - id: fmt
+  - id: cargo-check
+    args: [ --all-features ]
+  - id: clippy
+    args: [ --all-features, --no-deps, --tests, --, -D, warnings ]

@@ -169,7 +169,7 @@ mod tests {
         }
         "#;
 
-        let s = serde_json::from_str::<TypeSignature>(&s).unwrap();
+        let s = serde_json::from_str::<TypeSignature>(s).unwrap();
         assert_eq!(
             s,
             TypeSignature {
@@ -207,7 +207,7 @@ mod tests {
             }
         "#;
 
-        let s = serde_json::from_str::<TypeSignature>(&s).unwrap();
+        let s = serde_json::from_str::<TypeSignature>(s).unwrap();
         assert_eq!(
             s,
             TypeSignature {
@@ -251,7 +251,7 @@ mod tests {
             }
         "#;
 
-        let s = serde_json::from_str::<TypeSignature>(&s).unwrap();
+        let s = serde_json::from_str::<TypeSignature>(s).unwrap();
         assert_eq!(
             s,
             TypeSignature {
