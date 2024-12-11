@@ -195,6 +195,8 @@ impl ClientBuilder {
         let session = self.session.build()?;
         let max_attempt = self.max_attempt;
 
+        info!("session url: {:?}", session.url);
+
         if self.auth.is_some() && session.url.scheme() == "http" {
             return Err(Error::BasicAuthWithHttp);
         }
