@@ -9,8 +9,8 @@ use trino_rust_client::{ClientBuilder, Row};
 async fn main() {
     dotenv().ok();
 
-    let user = var("Bearer xxxxx").unwrap();
-    let access_token = var("Bearer xxxxx").unwrap();
+    let user = var("UserName").unwrap(); //todo fixme
+    let access_token = var("ACCESS_TOKEN").unwrap();
     let host = var("HOST").unwrap();
     let port = var("PORT").unwrap().parse().unwrap();
     let catalog = var("CATALOG").unwrap();
