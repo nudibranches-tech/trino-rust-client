@@ -195,6 +195,8 @@ impl ClientBuilder {
         let session = self.session.build()?;
         let max_attempt = self.max_attempt;
 
+        info!("session url: {:?}", session.url);
+
         if self.auth.is_some() && session.url.scheme() == "http" {
             return Err(Error::BasicAuthWithHttp);
         }
@@ -225,6 +227,7 @@ impl ClientBuilder {
 }
 
 fn add_prepare_header(mut builder: RequestBuilder, session: &Session) -> RequestBuilder {
+    //FIXME : set trino user from jwt ?
     builder = builder.header(HEADER_USER, &session.user);
     // TODO: difference with session.source?
     builder = builder.header(USER_AGENT, "trino-rust-client");
@@ -448,6 +451,7 @@ impl Client {
         if let Some(auth) = self.auth.as_ref() {
             match auth {
                 Auth::Basic(u, p) => req.basic_auth(u, p.as_ref()),
+                Auth::Jwt(t) => req.bearer_auth(t),
             }
         } else {
             req
