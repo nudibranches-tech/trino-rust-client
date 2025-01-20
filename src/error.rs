@@ -20,6 +20,8 @@ pub enum Error {
     DuplicateHeader(HeaderName),
     #[error("invalid empty auth")]
     EmptyAuth,
+    #[error("forbidden: {message}")]
+    Forbidden { message: String },
     #[error("basic auth can not be used with http")]
     BasicAuthWithHttp,
     #[error("http error, reason: {0}")]

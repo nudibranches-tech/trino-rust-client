@@ -381,6 +381,15 @@ impl Client {
         while let Some(url) = &next {
             let res = self.get_next_retry(url).await?;
             next = res.next_uri;
+
+            if let Some(error) = res.error {
+                if error.error_code == 4 {
+                    return Err(Error::Forbidden {
+                        message: error.message,
+                    });
+                }
+            }
+
             if let Some(d) = res.data_set {
                 match &mut ret {
                     Some(ret) => ret.merge(d),
