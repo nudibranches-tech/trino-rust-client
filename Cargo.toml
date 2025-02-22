@@ -1,32 +1,32 @@
 [dependencies]
 backon = "1.3.0"
 bigdecimal = "0.4.6"
-chrono = "0.4"
+chrono = "0.4.39"
 chrono-tz = "0.10"
 derive_more = {version = "2.0.1", features = ["full"]}
-futures = "0.3"
+futures = "0.3.31"
 http = "1.2"
 iterable = "0.6"
-lazy_static = "1.4"
-log = "0.4"
-paste = "1.0.14"
-regex = "1.5"
+lazy_static = "1.5.0"
+log = "0.4.26"
+paste = "1.0.15"
+regex = "1.11.1"
 # network dependencies
-reqwest = {version = "0.12.9", default-features = false, features = ["rustls-tls", "json"]}
+reqwest = {version = "0.12.12", default-features = false, features = ["rustls-tls", "json"]}
 # third party dependencies
-serde = {version = "1.0", features = ["derive"]}
-serde_json = "1.0"
-thiserror = "2.0.5"
-tokio = {version = "1.16", features = ["full"]}
+serde = {version = "1.0.218", features = ["derive"]}
+serde_json = "1.0.139"
+thiserror = "2.0.11"
+tokio = {version = "1.43.0", features = ["full"]}
 # self dependencies
-trino-rust-client-macros = {version = "0.5", path = "trino-rust-client-macros"}
-urlencoding = "2.1"
-uuid = {version = "1.2", features = ["serde", "v4"]}
+trino-rust-client-macros = {version = "0.5.1", path = "trino-rust-client-macros"}
+urlencoding = "2.1.3"
+uuid = {version = "1.14.0", features = ["serde", "v4"]}
 
 [dev-dependencies]
 dotenv = "0.15"
-maplit = "1.0"
-trybuild = "1.0"
+maplit = "1.0.2"
+trybuild = "1.0.103"
 
 [features]
 Trino = []
@@ -36,14 +36,14 @@ default = []
 authors = ["nudibranches technologies <contact@nudibranches.tech"]
 description = "A trino client library"
 documentation = "https://docs.rs/trino-rust-client"
-edition = "2021"
+edition = "2024"
 homepage = "https://github.com/nudibranches-tech/trino-rust-client"
 keywords = ["trino"]
 license = "MIT"
 name = "trino-rust-client"
 readme = "README.md"
 repository = "https://github.com/nudibranches-tech/trino-rust-client"
-version = "0.7.1"
+version = "0.7.2"
 
 [workspace]
 members = [".", "trino-rust-client-macros"]
