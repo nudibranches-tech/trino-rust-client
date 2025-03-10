@@ -39,6 +39,7 @@ pub struct ClientBuilder {
     max_attempt: usize,
     ssl: Option<Ssl>,
     no_verify: bool,
+    danger_allow_auth_with_http: bool,
 }
 
 #[derive(Debug)]
@@ -55,6 +56,7 @@ impl ClientBuilder {
             max_attempt: 3,
             ssl: None,
             no_verify: false,
+            danger_allow_auth_with_http: false,
         }
     }
 
@@ -70,6 +72,11 @@ impl ClientBuilder {
 
     pub fn no_verify(mut self, nv: bool) -> Self {
         self.no_verify = nv;
+        self
+    }
+
+    pub fn danger_allow_auth_with_http(mut self, allow: bool) -> Self {
+        self.danger_allow_auth_with_http = allow;
         self
     }
 
@@ -197,8 +204,11 @@ impl ClientBuilder {
 
         info!("session url: {:?}", session.url);
 
-        if self.auth.is_some() && session.url.scheme() == "http" {
-            return Err(Error::BasicAuthWithHttp);
+        if self.auth.is_some()
+            && session.url.scheme() == "http"
+            && !self.danger_allow_auth_with_http
+        {
+            return Err(Error::AuthWithHttp);
         }
 
         let mut client_builder =
@@ -374,15 +384,22 @@ fn need_retry(e: &Error) -> bool {
 
 impl Client {
     pub async fn get_all<T: Trino + 'static>(&self, sql: String) -> Result<DataSet<T>> {
-        let res = self.get_retry(sql).await?;
+        let res = self.get_retry(sql).await.map_err(|e| {
+            warn!("bogos binted? get_all(): {:?}", e);
+            e
+        })?;
         let mut ret = res.data_set;
-
         let mut next = res.next_uri;
+
         while let Some(url) = &next {
-            let res = self.get_next_retry(url).await?;
+            let res = self.get_next_retry(url).await.map_err(|e| {
+                warn!("coucou binted? get_all() get_next: {:?}", e);
+                e
+            })?;
             next = res.next_uri;
 
             if let Some(error) = res.error {
+                warn!("cccccc binted? QueryError res.error: {:?}", error);
                 if error.error_code == 4 {
                     return Err(Error::Forbidden {
                         message: error.message,

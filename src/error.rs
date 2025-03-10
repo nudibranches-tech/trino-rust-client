@@ -22,8 +22,8 @@ pub enum Error {
     EmptyAuth,
     #[error("forbidden: {message}")]
     Forbidden { message: String },
-    #[error("basic auth can not be used with http")]
-    BasicAuthWithHttp,
+    #[error("auth can not be used with http")]
+    AuthWithHttp,
     #[error("http error, reason: {0}")]
     HttpError(#[from] reqwest::Error),
     #[error("http not ok, code: {0}, reason: {1}")]
