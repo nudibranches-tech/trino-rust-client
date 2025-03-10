@@ -384,22 +384,15 @@ fn need_retry(e: &Error) -> bool {
 
 impl Client {
     pub async fn get_all<T: Trino + 'static>(&self, sql: String) -> Result<DataSet<T>> {
-        let res = self.get_retry(sql).await.map_err(|e| {
-            warn!("bogos binted? get_all(): {:?}", e);
-            e
-        })?;
+        let res = self.get_retry(sql).await?;
         let mut ret = res.data_set;
         let mut next = res.next_uri;
 
         while let Some(url) = &next {
-            let res = self.get_next_retry(url).await.map_err(|e| {
-                warn!("coucou binted? get_all() get_next: {:?}", e);
-                e
-            })?;
+            let res = self.get_next_retry(url).await?;
             next = res.next_uri;
 
             if let Some(error) = res.error {
-                warn!("cccccc binted? QueryError res.error: {:?}", error);
                 if error.error_code == 4 {
                     return Err(Error::Forbidden {
                         message: error.message,
