@@ -44,6 +44,7 @@ pub struct ClientBuilder {
 #[derive(Debug)]
 pub struct ExecuteResult {
     _m: (),
+    output_uri: Option<String>,
 }
 
 impl ClientBuilder {
@@ -409,11 +410,42 @@ impl Client {
         let res = self.get_retry::<Row>(sql).await?;
 
         let mut next = res.next_uri;
+        let mut last_next = next.clone();
+
         while let Some(url) = &next {
             let res = self.get_next_retry::<Row>(url).await?;
-            next = res.next_uri;
+
+            let next_uri = res.next_uri;
+
+            // If next_uri is not None, update last_next
+            if next_uri.is_some() {
+                last_next = next_uri.clone();
+            }
+            next = next_uri;
         }
-        Ok(ExecuteResult { _m: () })
+
+        let url = last_next.ok_or_else(|| {
+            Error::InternalError("No next URI available for execution result".to_string())
+        })?;
+
+        let result = self.try_get_retry_result(&url).await?;
+
+        if let Some(error) = result.error {
+            return Err(error.into());
+        }
+
+        Ok(ExecuteResult {
+            _m: (),
+            output_uri: None,
+        })
+    }
+
+    async fn try_get_retry_result(&self, url: &str) -> Result<TrinoRetryResult> {
+        let response = self.client.get(url).send().await?;
+
+        let result = response.json::<TrinoRetryResult>().await?;
+
+        Ok(result)
     }
 
     fn retry_policy(&self) -> ExponentialBuilder {
