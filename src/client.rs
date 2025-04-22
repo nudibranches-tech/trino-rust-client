@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 use tokio::time::Duration;
 
 use crate::auth::Auth;
+use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
 use crate::selected_role::SelectedRole;
@@ -44,7 +45,7 @@ pub struct ClientBuilder {
 #[derive(Debug)]
 pub struct ExecuteResult {
     _m: (),
-    output_uri: Option<String>,
+    pub output_uri: Option<String>,
 }
 
 impl ClientBuilder {
