@@ -434,9 +434,7 @@ impl Client {
             return Err(error.into());
         }
 
-        Ok(ExecuteResult {
-            output_uri: None,
-        })
+        Ok(ExecuteResult { output_uri: None })
     }
 
     async fn try_get_retry_result(&self, url: &str) -> Result<TrinoRetryResult> {
