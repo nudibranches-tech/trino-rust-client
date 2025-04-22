@@ -44,7 +44,6 @@ pub struct ClientBuilder {
 
 #[derive(Debug)]
 pub struct ExecuteResult {
-    _m: (),
     pub output_uri: Option<String>,
 }
 
@@ -436,7 +435,6 @@ impl Client {
         }
 
         Ok(ExecuteResult {
-            _m: (),
             output_uri: None,
         })
     }
