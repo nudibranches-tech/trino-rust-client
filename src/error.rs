@@ -9,8 +9,12 @@ use crate::models::QueryError;
 pub enum Error {
     #[error("invalid catalog")]
     InvalidCatalog,
+    #[error("catalog not found")]
+    CatalogNotFound,
     #[error("invalid schema")]
     InvalidSchema,
+    #[error("schema not found")]
+    SchemaNotFound,
     #[error("schema already exists")]
     SchemaAlreadyExists,
     #[error("invalid source")]
@@ -94,11 +98,11 @@ impl From<TrinoError> for Error {
     fn from(error: TrinoError) -> Self {
         match error.error_name.as_str() {
             // CATALOG ERRORS
-            "CATALOG_NOT_FOUND" => Error::InvalidCatalog,
+            "CATALOG_NOT_FOUND" => Error::CatalogNotFound,
             "MISSING_CATALOG_NAME" => Error::InvalidCatalog,
 
             // SCHEMA ERRORS
-            "SCHEMA_NOT_FOUND" => Error::InvalidSchema,
+            "SCHEMA_NOT_FOUND" => Error::SchemaNotFound,
             "MISSING_SCHEMA_NAME" => Error::InvalidSchema,
             "SCHEMA_ALREADY_EXISTS" => Error::SchemaAlreadyExists,
 

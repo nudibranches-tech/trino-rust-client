@@ -406,30 +406,43 @@ impl Client {
         }
     }
 
+    /**
+     * 
+     * Execute a SQL statement and return the result.
+     * 
+     * If the TRINO query returns an error, the method returns an error of type `Error::TrinoError`
+     * @param sql The SQL statement to execute
+     * @return Result<ExecuteResult> The result of the execution
+     * */
     pub async fn execute(&self, sql: String) -> Result<ExecuteResult> {
+        // try the sql first
         let res = self.get_retry::<Row>(sql).await?;
 
         let mut next = res.next_uri;
-        let mut last_next = next.clone();
+        let mut final_uri = next.clone();
 
+        // Trino attempts several times to execute a query before marking it as failed.
+        // At the end, retrieve the URL of the last request to get the result
         while let Some(url) = &next {
             let res = self.get_next_retry::<Row>(url).await?;
 
             let next_uri = res.next_uri;
 
-            // If next_uri is not None, update last_next
+            // If next_uri is not None, update final_uri
             if next_uri.is_some() {
-                last_next = next_uri.clone();
+                final_uri = next_uri.clone();
             }
             next = next_uri;
         }
 
-        let url = last_next.ok_or_else(|| {
+        let url = final_uri.ok_or_else(|| {
             Error::InternalError("No next URI available for execution result".to_string())
         })?;
 
+        // Parse the final URI to get TrinoRetryResult
         let result = self.try_get_retry_result(&url).await?;
 
+        // Check if the result is in error state
         if let Some(error) = result.error {
             return Err(error.into());
         }
