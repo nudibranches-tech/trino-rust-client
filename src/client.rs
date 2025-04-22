@@ -440,7 +440,6 @@ impl Client {
         // Parse the final URI to get TrinoRetryResult
         let result = self.try_get_retry_result(&url).await?;
 
-        // Check if the result is in error state
         if let Some(error) = result.error {
             return Err(error.into());
         }
