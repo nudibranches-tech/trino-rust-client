@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 use tokio::time::Duration;
 
 use crate::auth::Auth;
+use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
 use crate::selected_role::SelectedRole;
@@ -43,7 +44,7 @@ pub struct ClientBuilder {
 
 #[derive(Debug)]
 pub struct ExecuteResult {
-    _m: (),
+    pub output_uri: Option<String>,
 }
 
 impl ClientBuilder {
@@ -405,15 +406,53 @@ impl Client {
         }
     }
 
+    /**
+     * Execute a SQL statement and return the result.
+     * If the TRINO query returns an error, the method returns an error of type `Error::TrinoError`
+     * @param sql The SQL statement to execute
+     * @return Result<ExecuteResult> The result of the execution
+     * */
     pub async fn execute(&self, sql: String) -> Result<ExecuteResult> {
+        // try the sql first
         let res = self.get_retry::<Row>(sql).await?;
 
         let mut next = res.next_uri;
+        let mut final_uri = next.clone();
+
+        // Trino attempts several times to execute a query before marking it as failed.
+        // At the end, retrieve the URL of the last request to get the result
         while let Some(url) = &next {
             let res = self.get_next_retry::<Row>(url).await?;
-            next = res.next_uri;
+
+            let next_uri = res.next_uri;
+
+            // If next_uri is not None, update final_uri
+            if next_uri.is_some() {
+                final_uri = next_uri.clone();
+            }
+            next = next_uri;
         }
-        Ok(ExecuteResult { _m: () })
+
+        let url = final_uri.ok_or_else(|| {
+            Error::InternalError("No next URI available for execution result".to_string())
+        })?;
+
+        // Parse the final URI to get TrinoRetryResult
+        let result = self.try_get_retry_result(&url).await?;
+
+        if let Some(error) = result.error {
+            return Err(error.into());
+        }
+
+        Ok(ExecuteResult { output_uri: None })
+    }
+
+    async fn try_get_retry_result(&self, url: &str) -> Result<TrinoRetryResult> {
+        let response = self.client.get(url).send().await?;
+
+        let result = response.json::<TrinoRetryResult>().await?;
+
+        Ok(result)
     }
 
     fn retry_policy(&self) -> ExponentialBuilder {
