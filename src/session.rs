@@ -96,7 +96,7 @@ impl SessionBuilder {
             Scheme::HTTP
         };
         let host = self.host;
-        let s = format!("{}://{}:{}/v1/statement", scheme, host, self.port);
+        let s = format!("{}://{}:{}", scheme, host, self.port);
         let url = Url::parse(&s).map_err(|_| Error::InvalidHost(host))?;
         let ret = Session {
             url,
