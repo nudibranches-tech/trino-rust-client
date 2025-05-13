@@ -24,7 +24,6 @@ use crate::{DataSet, QueryResult, Row, Trino};
 // TODO:
 // allow_redirects
 // proxies
-// cancel
 
 pub struct Client {
     client: reqwest::Client,
@@ -195,8 +194,6 @@ impl ClientBuilder {
     pub fn build(self) -> Result<Client> {
         let session = self.session.build()?;
         let max_attempt = self.max_attempt;
-
-        info!("session url: {:?}", session.url);
 
         if self.auth.is_some() && session.url.scheme() == "http" {
             return Err(Error::BasicAuthWithHttp);
@@ -474,14 +471,21 @@ impl Client {
     }
 
     pub async fn get<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
-        let req = self.client.post(self.url.clone()).body(sql);
+        let req = self
+            .client
+            .post(format!("{}v1/statement", self.url))
+            .body(sql);
         let req = {
             let session = self.session.read().await;
             add_session_header(req, &session)
         };
 
         let req = self.auth_req(req);
-        self.send(req).await
+        self.send(req, StatusCode::OK, |resp| async {
+            let data = resp.json::<QueryResult<T>>().await?;
+            Ok(data)
+        })
+        .await
     }
 
     pub async fn get_next<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
@@ -492,7 +496,24 @@ impl Client {
         };
 
         let req = self.auth_req(req);
-        self.send(req).await
+        self.send(req, StatusCode::OK, |resp| async {
+            let data = resp.json::<QueryResult<T>>().await?;
+            Ok(data)
+        })
+        .await
+    }
+
+    pub async fn cancel(&self, query_id: &str) -> Result<()> {
+        let url = format!("{}v1/query/{}", self.url, query_id);
+        let req = self.client.delete(url);
+        let req = {
+            let session = self.session.read().await;
+            add_prepare_header(req, &session)
+        };
+
+        let req = self.auth_req(req);
+        self.send(req, StatusCode::NO_CONTENT, |_| async { Ok(()) })
+            .await
     }
 
     fn auth_req(&self, req: RequestBuilder) -> RequestBuilder {
@@ -506,16 +527,24 @@ impl Client {
         }
     }
 
-    async fn send<T: Trino + 'static>(&self, req: RequestBuilder) -> Result<QueryResult<T>> {
+    async fn send<R, F, Fut>(
+        &self,
+        req: RequestBuilder,
+        expected_status: StatusCode,
+        handle_response: F,
+    ) -> Result<R>
+    where
+        F: FnOnce(Response) -> Fut,
+        Fut: std::future::Future<Output = Result<R>>,
+    {
         let resp = req.send().await?;
         let status = resp.status();
-        if status != StatusCode::OK {
+        if status != expected_status {
             let data = resp.text().await.unwrap_or("".to_string());
             Err(Error::HttpNotOk(status, data))
         } else {
             self.update_session(&resp).await;
-            let data = resp.json::<QueryResult<T>>().await?;
-            Ok(data)
+            handle_response(resp).await
         }
     }
 

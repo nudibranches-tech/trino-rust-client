@@ -20,6 +20,7 @@ thiserror = "2.0.5"
 tokio = {version = "1.16", features = ["full"]}
 # self dependencies
 trino-rust-client-macros = {version = "0.5", path = "trino-rust-client-macros"}
+url = "2.5.0"
 urlencoding = "2.1"
 uuid = {version = "1.2", features = ["serde", "v4"]}
 
@@ -27,6 +28,7 @@ uuid = {version = "1.2", features = ["serde", "v4"]}
 dotenv = "0.15"
 maplit = "1.0"
 trybuild = "1.0"
+wiremock = "0.5"
 
 [features]
 Trino = []
