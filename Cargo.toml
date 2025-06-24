@@ -18,6 +18,7 @@ serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 thiserror = "2.0.12"
 tokio = {version = "1.16", features = ["full"]}
+base64 = "0.22"
 # self dependencies
 trino-rust-client-macros = {version = "0.5.1", path = "trino-rust-client-macros"}
 url = "2.5.4"
