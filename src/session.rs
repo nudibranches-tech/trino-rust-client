@@ -89,6 +89,7 @@ impl SessionBuilder {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn build(self) -> Result<Session> {
         let scheme = if self.secure {
             Scheme::HTTPS

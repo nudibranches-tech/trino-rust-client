@@ -6,6 +6,7 @@ use thiserror::Error;
 use crate::models::QueryError;
 
 #[derive(Error, Debug)]
+#[allow(clippy::result_large_err)]
 pub enum Error {
     #[error("invalid catalog")]
     InvalidCatalog,

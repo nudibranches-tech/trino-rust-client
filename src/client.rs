@@ -191,6 +191,7 @@ impl ClientBuilder {
         self
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn build(self) -> Result<Client> {
         let session = self.session.build()?;
         let max_attempt = self.max_attempt;
