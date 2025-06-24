@@ -1,0 +1,47 @@
+{
+    "id": "20200513_074020_00002_mgdh8",
+    "infoUri": "http://localhost:11032/ui/query.html?20200513_074020_00002_mgdh8",
+    "columns": [
+        {
+            "name": "_col0",
+            "type": "bigint",
+            "typeSignature": {
+                "rawType": "bigint",
+                "arguments": []
+            }
+        }
+    ],
+    "data": {
+        "encoding": "json",
+        "segments": [
+            {
+                "type": "inline",
+                "data": "W1sxXSwgWzJdXQ==",
+                "metadata": {
+                    "rowOffset": 0,
+                    "rowsCount": 2,
+                    "segmentSize": 10
+                }
+            }
+        ]
+    },
+    "stats": {
+        "state": "FINISHED",
+        "queued": false,
+        "scheduled": true,
+        "nodes": 1,
+        "totalSplits": 1,
+        "queuedSplits": 0,
+        "runningSplits": 0,
+        "completedSplits": 1,
+        "cpuTimeMillis": 0,
+        "wallTimeMillis": 0,
+        "queuedTimeMillis": 0,
+        "elapsedTimeMillis": 1,
+        "processedRows": 2,
+        "processedBytes": 0,
+        "peakMemoryBytes": 0,
+        "spilledBytes": 0
+    },
+    "warnings": []
+}

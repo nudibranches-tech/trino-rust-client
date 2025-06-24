@@ -10,6 +10,8 @@ use reqwest::header::HeaderValue;
 use reqwest::{RequestBuilder, Response, Url};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
+use serde_json::Value;
+use base64;
 
 use crate::auth::Auth;
 use crate::error::TrinoRetryResult;
@@ -20,6 +22,7 @@ use crate::session::{Session, SessionBuilder};
 use crate::ssl::Ssl;
 use crate::transaction::TransactionId;
 use crate::{DataSet, QueryResult, Row, Trino};
+use crate::models::{EncodedQueryData, RawQueryResult, DataSegment, Column};
 
 // TODO:
 // allow_redirects
@@ -174,6 +177,16 @@ impl ClientBuilder {
         self
     }
 
+    pub fn query_data_encodings(mut self, enc: Vec<String>) -> Self {
+        self.session.query_data_encodings = enc;
+        self
+    }
+
+    pub fn query_data_encoding(mut self, enc: impl ToString) -> Self {
+        self.session.query_data_encodings.push(enc.to_string());
+        self
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     pub fn auth(mut self, s: Auth) -> Self {
@@ -232,6 +245,12 @@ fn add_prepare_header(mut builder: RequestBuilder, session: &Session) -> Request
     builder = builder.header(USER_AGENT, "trino-rust-client");
     if session.compression_disabled {
         builder = builder.header(ACCEPT_ENCODING, "identity")
+    }
+    if !session.query_data_encodings.is_empty() {
+        builder = builder.header(
+            HEADER_QUERY_DATA_ENCODING,
+            session.query_data_encodings.join(","),
+        );
     }
     builder
 }
@@ -483,8 +502,7 @@ impl Client {
 
         let req = self.auth_req(req);
         self.send(req, StatusCode::OK, |resp| async {
-            let data = resp.json::<QueryResult<T>>().await?;
-            Ok(data)
+            self.parse_query_result::<T>(resp).await
         })
         .await
     }
@@ -498,8 +516,7 @@ impl Client {
 
         let req = self.auth_req(req);
         self.send(req, StatusCode::OK, |resp| async {
-            let data = resp.json::<QueryResult<T>>().await?;
-            Ok(data)
+            self.parse_query_result::<T>(resp).await
         })
         .await
     }
@@ -526,6 +543,76 @@ impl Client {
         } else {
             req
         }
+    }
+
+    async fn parse_query_result<T: Trino + 'static>(&self, resp: Response) -> Result<QueryResult<T>> {
+        let raw = resp.json::<RawQueryResult>().await?;
+        self.process_raw_result(raw).await
+    }
+
+    async fn process_raw_result<T: Trino + 'static>(&self, raw: RawQueryResult) -> Result<QueryResult<T>> {
+        let data_set = if let (Some(cols), Some(data)) = (raw.columns.clone(), raw.data.clone()) {
+            if data.is_array() {
+                let v = serde_json::json!({"columns": cols, "data": data});
+                Some(serde_json::from_value(v).map_err(|e| Error::InternalError(format!("deserialize data set failed: {}", e)))?)
+            } else if data.is_object() {
+                let enc: EncodedQueryData = serde_json::from_value(data).map_err(|e| Error::InternalError(format!("deserialize encoded data failed: {}", e)))?;
+                Some(self.decode_encoded_data(enc, cols).await?)
+            } else {
+                None
+            }
+        } else { None };
+
+        Ok(QueryResult {
+            id: raw.id,
+            info_uri: raw.info_uri,
+            partial_cancel_uri: raw.partial_cancel_uri,
+            next_uri: raw.next_uri,
+            data_set,
+            error: raw.error,
+            stats: raw.stats,
+            warnings: raw.warnings,
+            update_type: raw.update_type,
+            update_count: raw.update_count,
+        })
+    }
+
+    async fn decode_encoded_data<T: Trino + 'static>(&self, enc: EncodedQueryData, columns: Vec<Column>) -> Result<DataSet<T>> {
+        if enc.encoding != "json" {
+            return Err(Error::InternalError(format!("unsupported encoding: {}", enc.encoding)));
+        }
+
+        let mut rows: Vec<Vec<serde_json::Value>> = Vec::new();
+
+        for seg in enc.segments {
+            let bytes = match seg {
+                DataSegment::Inline { data, .. } => {
+                    base64::decode(data).map_err(|e| Error::InternalError(format!("base64 decode failed: {}", e)))?
+                }
+                DataSegment::Spooled { uri, headers, ack_uri, .. } => {
+                    let mut req = self.client.get(&uri);
+                    for (k, vals) in headers {
+                        for v in vals {
+                            req = req.header(&k, v);
+                        }
+                    }
+                    let resp = req.send().await?.bytes().await?.to_vec();
+                    if let Some(ack) = ack_uri {
+                        let _ = self.client.get(&ack).send().await;
+                    }
+                    resp
+                }
+            };
+
+            let mut seg_rows: Vec<Vec<serde_json::Value>> = serde_json::from_slice(&bytes)
+                .map_err(|e| Error::InternalError(format!("segment decode failed: {}", e)))?;
+            rows.append(&mut seg_rows);
+        }
+
+        let v = serde_json::json!({"columns": columns, "data": rows});
+        let ds = serde_json::from_value(v)
+            .map_err(|e| Error::InternalError(format!("data set decode failed: {}", e)))?;
+        Ok(ds)
     }
 
     async fn send<R, F, Fut>(
