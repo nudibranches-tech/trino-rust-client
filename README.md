@@ -95,7 +95,7 @@ use trino_rust_client::{ClientBuilder, Row, Trino};
 #[tokio::main]
 async fn main() {
     let cli = ClientBuilder::new("user", "localhost")
-        .port(8443)
+        .port(8080)
         .catalog("catalog")
         .build()
         .unwrap();
