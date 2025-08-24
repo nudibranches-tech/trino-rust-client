@@ -88,6 +88,30 @@ async fn main() {
 }
 ```
 
+### Example dealing with fields not know at compile time
+```rust
+use trino_rust_client::{ClientBuilder, Row, Trino};
+
+#[tokio::main]
+async fn main() {
+    let cli = ClientBuilder::new("user", "localhost")
+        .port(8443)
+        .catalog("catalog")
+        .build()
+        .unwrap();
+
+    let sql = "select first_name, last_name from users";
+
+    let rows = cli.get_all::<Row>(sql.into()).await.unwrap().into_vec();
+
+    for row in rows {
+        let first_name = row.value().get(0).unwrap();
+        let last_name = row.value().get(1).unwrap();
+        println!("{} : {}", first_name, last_name);
+    }
+}
+```
+
 ## License
 
 MIT
