@@ -88,7 +88,7 @@ async fn main() {
 }
 ```
 
-### Example dealing with fields not know at compile time
+### Example dealing with fields not known at compile time
 ```rust
 use trino_rust_client::{ClientBuilder, Row, Trino};
 
