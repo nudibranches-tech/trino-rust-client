@@ -140,6 +140,21 @@ impl<'de, T: Trino> Deserialize<'de> for DataSet<T> {
                     return Err(de::Error::missing_field("columns"));
                 };
 
+                if types.is_empty() {
+                    // For empty columns (like PREPARE statements), skip data field processing
+                    // and just consume the data field if it exists
+                    if let Some(Field::Data) = map.next_key()? {
+                        let _: serde_json::Value = map.next_value()?; // consume and ignore
+                    }
+                    if let Some(Field::Columns) = map.next_key()? {
+                        return Err(de::Error::duplicate_field("columns"));
+                    }
+                    return Ok(DataSet {
+                        types,
+                        data: vec![],
+                    });
+                }
+
                 let array_ty = TrinoTy::Array(Box::new(TrinoTy::Row(types.clone())));
                 let ctx = Context::new::<Vec<T>>(&array_ty)
                     .map_err(|e| de::Error::custom(format!("invalid trino type, reason: {}", e)))?;
