@@ -582,16 +582,43 @@ impl Client {
 // helper functions
 
 fn encode_kv(k: &str, v: &str) -> String {
-    format!("{}={}", k, urlencoding::encode(v))
+    url::form_urlencoded::Serializer::new(String::new())
+        .append_pair(k, v)
+        .finish()
 }
 
 fn decode_kv_from_header(input: &HeaderValue) -> Option<(String, String)> {
-    let s = input.to_str().ok()?;
-    let kv = s.split('=').collect::<Vec<_>>();
-    if kv.len() != 2 {
-        return None;
+    let kvs = url::form_urlencoded::parse(input.as_bytes()).collect::<Vec<_>>();
+    if kvs.is_empty() {
+        None
+    } else {
+        Some((kvs[0].0.to_string(), kvs[0].1.to_string()))
     }
-    let k = kv[0].to_string();
-    let v = urlencoding::decode(kv[1]).ok()?;
-    Some((k, v.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::header::HeaderValue;
+
+    use crate::client::decode_kv_from_header;
+
+    #[test]
+    fn test_decode_kv_from_header_plus_sign_to_space() {
+        let header_value = HeaderValue::from_static("statement=show+tables");
+        let result = decode_kv_from_header(&header_value);
+        assert!(result.is_some());
+        let (key, value) = result.unwrap();
+        assert_eq!(key, "statement");
+        assert_eq!(value, "show tables");
+    }
+
+    #[test]
+    fn test_decode_kv_from_header_percent_encoding() {
+        let header_value = HeaderValue::from_static("statement=show%20tables");
+        let result = decode_kv_from_header(&header_value);
+        assert!(result.is_some());
+        let (key, value) = result.unwrap();
+        assert_eq!(key, "statement");
+        assert_eq!(value, "show tables");
+    }
 }
