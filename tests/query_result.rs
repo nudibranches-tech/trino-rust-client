@@ -73,6 +73,20 @@ fn test_finished() {
 }
 
 #[test]
+fn test_finished_prepare() {
+    let s = read("query_result_finished_prepare");
+    let d = serde_json::from_str::<QueryResult<A>>(&s).unwrap();
+
+    assert!(d.next_uri.is_none());
+    assert!(d.data_set.is_some());
+    assert!(d.error.is_none());
+
+    let data_set = d.data_set.unwrap();
+    assert!(data_set.is_empty());
+    assert!(data_set.split().0.is_empty());
+}
+
+#[test]
 fn test_failed() {
     let s = read("query_result_failed");
     let d = serde_json::from_str::<QueryResult<A>>(&s).unwrap();
