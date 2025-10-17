@@ -44,6 +44,8 @@ pub struct ClientBuilder {
 #[derive(Debug)]
 pub struct ExecuteResult {
     pub output_uri: Option<String>,
+    pub update_type: Option<String>,
+    pub update_count: Option<u64>,
 }
 
 impl ClientBuilder {
@@ -442,7 +444,11 @@ impl Client {
             return Err(error.into());
         }
 
-        Ok(ExecuteResult { output_uri: None })
+        Ok(ExecuteResult {
+            output_uri: None,
+            update_type: result.update_type,
+            update_count: result.update_count,
+        })
     }
 
     async fn try_get_retry_result(&self, url: &str) -> Result<TrinoRetryResult> {

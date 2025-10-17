@@ -67,6 +67,8 @@ pub struct TrinoRetryResult {
     pub error: Option<TrinoError>,
     #[serde(rename = "updateType")]
     pub update_type: Option<String>,
+    #[serde(rename = "updateCount")]
+    pub update_count: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
