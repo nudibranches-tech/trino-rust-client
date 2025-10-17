@@ -16,4 +16,4 @@ keywords = ["trino"]
 license = "MIT"
 name = "trino-rust-client-macros"
 repository = "https://github.com/nudibranches-tech/trino-rust-client"
-version = "0.5.1"
+version = "0.6.0"
