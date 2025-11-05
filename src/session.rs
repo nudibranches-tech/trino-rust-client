@@ -36,6 +36,7 @@ pub struct Session {
     pub transaction_id: TransactionId,
     pub client_request_timeout: Duration,
     pub compression_disabled: bool,
+    pub spooling_encoding: Option<String>,
 }
 
 #[derive(Debug)]
@@ -61,6 +62,7 @@ pub(crate) struct SessionBuilder {
     pub(crate) transaction_id: TransactionId,
     pub(crate) client_request_timeout: Duration,
     pub(crate) compression_disabled: bool,
+    pub(crate) spooling_encoding: Option<String>,
 }
 
 impl SessionBuilder {
@@ -86,6 +88,7 @@ impl SessionBuilder {
             transaction_id: TransactionId::NoTransaction,
             client_request_timeout: Duration::from_secs(30),
             compression_disabled: false,
+            spooling_encoding: Some("json+zstd".to_string()),
         }
     }
 
@@ -118,6 +121,7 @@ impl SessionBuilder {
             transaction_id: self.transaction_id,
             client_request_timeout: self.client_request_timeout,
             compression_disabled: self.compression_disabled,
+            spooling_encoding: self.spooling_encoding,
         };
         Ok(ret)
     }
