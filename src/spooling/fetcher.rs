@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Read;
+use std::thread;
 
 use crate::error::{Error, Result};
 use crate::spooling::segment::Segment;
@@ -9,8 +10,13 @@ use flate2::read::GzDecoder;
 use futures::stream::{self, StreamExt};
 use reqwest::Client;
 
-// Default maximum number of concurrent segment fetches
-const DEFAULT_MAX_CONCURRENT_SEGMENTS: usize = 5;
+// Default maximum number of concurrent segment fetches based on CPU count
+fn default_max_concurrent_segments() -> usize {
+    thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(5)
+        .max(1)
+}
 
 // Fetcher for segments with the spooling protocol
 pub struct SegmentFetcher {
@@ -23,12 +29,12 @@ impl SegmentFetcher {
     pub fn new(http_client: Client) -> Self {
         Self {
             http_client,
-            max_concurrent_segments: DEFAULT_MAX_CONCURRENT_SEGMENTS,
+            max_concurrent_segments: default_max_concurrent_segments(),
         }
     }
 
     /// Configure the maximum number of concurrent segment fetches
-    /// Default is 5
+    /// Default is based on available CPU parallelism (minimum 1)
     pub fn with_max_concurrent(mut self, count: usize) -> Self {
         self.max_concurrent_segments = count.max(1);
         self

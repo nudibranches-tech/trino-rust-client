@@ -1,14 +1,17 @@
 [dependencies]
 backon = "1.5.2"
+base64 = {version = "0.22", optional = true}
 bigdecimal = "0.4.8"
 chrono = "0.4.42"
 chrono-tz = "0.10.4"
 derive_more = {version = "2.0.1", features = ["full"]}
+flate2 = {version = "1.0", optional = true}
 futures = "0.3"
 http = "1.3"
 iterable = "0.6"
 lazy_static = "1.5"
 log = "0.4.28"
+lz4 = {version = "1.28", optional = true}
 paste = "1.0.15"
 regex = "1.12.2"
 # network dependencies
@@ -23,9 +26,6 @@ trino-rust-client-macros = {version = "0.6.0", path = "trino-rust-client-macros"
 url = "2.5.7"
 uuid = {version = "1.18.1", features = ["serde", "v4"]}
 zstd = {version = "0.13", optional = true}
-base64 = {version ="0.22", optional = true}
-lz4 = {version = "1.28", optional = true}
-flate2 = {version = "1.0", optional = true}
 
 [dev-dependencies]
 dotenv = "0.15"
@@ -33,10 +33,15 @@ maplit = "1.0"
 trybuild = "1.0.112"
 wiremock = "0.6.5"
 
+[[example]]
+name = "spooling"
+path = "examples/spooling.rs"
+required-features = ["spooling"]
+
 [features]
 Trino = []
-spooling = ["base64", "zstd", "lz4", "flate2"]
 default = []
+spooling = ["base64", "zstd", "lz4", "flate2"]
 
 [package]
 authors = ["nudibranches technologies <contact@nudibranches.tech"]
@@ -50,6 +55,11 @@ name = "trino-rust-client"
 readme = "README.md"
 repository = "https://github.com/nudibranches-tech/trino-rust-client"
 version = "0.8.0"
+
+[[test]]
+name = "spooling_protocol"
+path = "tests/spooling_protocol.rs"
+required-features = ["spooling"]
 
 [workspace]
 members = [".", "trino-rust-client-macros"]

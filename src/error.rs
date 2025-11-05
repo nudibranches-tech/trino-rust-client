@@ -43,7 +43,7 @@ pub enum Error {
     #[error("http not ok, code: {0}, reason: {1}")]
     HttpNotOk(StatusCode, String),
     #[error("query error, reason: {0}")]
-    QueryError(#[from] QueryError),
+    QueryError(Box<QueryError>),
     #[error("inconsistent data")]
     InconsistentData,
     #[error("empty data")]
@@ -54,6 +54,12 @@ pub enum Error {
     InvalidHost(String),
     #[error("internal error: {0}")]
     InternalError(String),
+}
+
+impl From<QueryError> for Error {
+    fn from(err: QueryError) -> Self {
+        Error::QueryError(Box::new(err))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

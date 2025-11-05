@@ -12,11 +12,19 @@ use tokio::sync::RwLock;
 use tokio::time::Duration;
 
 use crate::auth::Auth;
+use crate::build_dataset;
 use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
+use crate::models::QueryResultData;
+#[cfg(feature = "spooling")]
+use crate::models::SpooledData;
 use crate::selected_role::SelectedRole;
 use crate::session::{Session, SessionBuilder};
+#[cfg(feature = "spooling")]
+use crate::spooling::decompress_segment_bytes;
+#[cfg(feature = "spooling")]
+use crate::spooling::{SegmentFetcher, SpoolingEncoding};
 use crate::ssl::Ssl;
 use crate::transaction::TransactionId;
 use crate::{DataSet, QueryResult, Row, Trino};
@@ -31,6 +39,8 @@ pub struct Client {
     auth: Option<Auth>,
     max_attempt: usize,
     url: Url,
+    #[cfg(feature = "spooling")]
+    segment_fetcher: SegmentFetcher,
 }
 
 pub struct ClientBuilder {
@@ -39,6 +49,10 @@ pub struct ClientBuilder {
     max_attempt: usize,
     ssl: Option<Ssl>,
     no_verify: bool,
+    #[cfg(feature = "spooling")]
+    segment_fetcher: Option<SegmentFetcher>,
+    #[cfg(feature = "spooling")]
+    max_concurrent_segments: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -57,6 +71,10 @@ impl ClientBuilder {
             max_attempt: 3,
             ssl: None,
             no_verify: false,
+            #[cfg(feature = "spooling")]
+            segment_fetcher: None,
+            #[cfg(feature = "spooling")]
+            max_concurrent_segments: None,
         }
     }
 
@@ -176,6 +194,42 @@ impl ClientBuilder {
         self
     }
 
+    #[cfg(feature = "spooling")]
+    pub fn segment_fetcher(mut self, segment_fetcher: SegmentFetcher) -> Self {
+        self.segment_fetcher = Some(segment_fetcher);
+        self
+    }
+
+    #[cfg(feature = "spooling")]
+    /// Set the maximum number of concurrent segment fetches
+    /// Default is based on available CPU parallelism (minimum 1)
+    pub fn max_concurrent_segments(mut self, count: usize) -> Self {
+        self.max_concurrent_segments = Some(count);
+        self
+    }
+
+    #[cfg(feature = "spooling")]
+    /// Set the spooling encoding format. Supported values: "json", "json+zstd", "json+lz4".
+    /// Defaults to "json+zstd" if not specified.
+    pub fn spooling_encoding(mut self, encoding: impl ToString) -> Self {
+        let encoding_str = encoding.to_string();
+
+        match SpoolingEncoding::try_from(encoding_str.as_str()) {
+            Ok(_) => {
+                self.session.spooling_encoding = Some(encoding_str);
+            }
+            Err(_) => {
+                log::warn!(
+                    "Invalid spooling encoding '{}', using default 'json+zstd'. Valid values: json, json+zstd, json+lz4",
+                    encoding_str
+                );
+                self.session.spooling_encoding = Some("json+zstd".to_string());
+            }
+        }
+
+        self
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     pub fn auth(mut self, s: Auth) -> Self {
@@ -215,12 +269,25 @@ impl ClientBuilder {
             }
         }
 
+        let client = client_builder.build()?;
+
+        #[cfg(feature = "spooling")]
+        let segment_fetcher = self.segment_fetcher.unwrap_or_else(|| {
+            let mut fetcher = SegmentFetcher::new(client.clone());
+            if let Some(max_concurrent) = self.max_concurrent_segments {
+                fetcher = fetcher.with_max_concurrent(max_concurrent);
+            }
+            fetcher
+        });
+
         let cli = Client {
             auth: self.auth,
             url: session.url.clone(),
             session: RwLock::new(session),
-            client: client_builder.build()?,
+            client,
             max_attempt,
+            #[cfg(feature = "spooling")]
+            segment_fetcher,
         };
 
         Ok(cli)
@@ -291,6 +358,15 @@ fn add_session_header(mut builder: RequestBuilder, session: &Session) -> Request
     );
     builder = builder.header(HEADER_TRANSACTION, session.transaction_id.to_str());
     builder = builder.header(HEADER_CLIENT_CAPABILITIES, "PATH,PARAMETRIC_DATETIME");
+
+    // Add spooling header when feature is enabled
+    #[cfg(feature = "spooling")]
+    {
+        if let Some(encoding) = &session.spooling_encoding {
+            builder = builder.header(HEADER_SPOOLING, encoding);
+        }
+    }
+
     builder
 }
 
@@ -374,36 +450,261 @@ fn need_retry(e: &Error) -> bool {
 }
 
 impl Client {
-    pub async fn get_all<T: Trino + 'static>(&self, sql: String) -> Result<DataSet<T>> {
+    pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de> + serde::Serialize,
+    {
         let res = self.get_retry(sql).await?;
-        let mut ret = res.data_set;
 
-        let mut next = res.next_uri;
-        while let Some(url) = &next {
-            let res = self.get_next_retry(url).await?;
-            next = res.next_uri;
+        // Store columns from responses (used for Direct protocol DataSet construction)
+        let mut columns = res.columns;
 
-            if let Some(error) = res.error {
-                if error.error_code == 4 {
-                    return Err(Error::Forbidden {
-                        message: error.message,
-                    });
+        match res.data {
+            Some(QueryResultData::Direct(rows)) => {
+                // Direct protocol: accumulate Vec<T>, convert to DataSet at the end
+                let mut all_rows = rows;
+
+                let mut next = res.next_uri;
+                while let Some(url) = &next {
+                    let mut res = self.get_next_retry(url).await?;
+                    next = res.next_uri;
+
+                    // Collect columns from any response that has them
+                    if columns.is_none() {
+                        columns = res.columns.take();
+                    }
+
+                    if let Some(error) = res.error {
+                        if error.error_code == 4 {
+                            return Err(Error::Forbidden {
+                                message: error.message,
+                            });
+                        } else {
+                            return Err(Error::InternalError(format!(
+                                "Query failed with {} (error code {}): {}",
+                                error.error_name, error.error_code, error.message
+                            )));
+                        }
+                    }
+
+                    if let Some(data) = res.data {
+                        match data {
+                            QueryResultData::Direct(rows) => {
+                                all_rows.extend(rows);
+                            }
+                            #[cfg(feature = "spooling")]
+                            QueryResultData::Spooled(_) => {
+                                return Err(Error::InternalError(
+                                    "Cannot mix Direct and Spooled protocols in same query".to_string(),
+                                ));
+                            }
+                            #[cfg(not(feature = "spooling"))]
+                            QueryResultData::Spooled(_) => {
+                                return Err(Error::InternalError(
+                                    "Server sent spooled data but 'spooling' feature is not enabled. \
+                                     Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
+                                ));
+                            }
+                        }
+                    }
                 }
-            }
 
-            if let Some(d) = res.data_set {
-                match &mut ret {
-                    Some(ret) => ret.merge(d),
-                    None => ret = Some(d),
+                build_dataset(all_rows, columns)
+            }
+            #[cfg(feature = "spooling")]
+            Some(QueryResultData::Spooled(spooled)) => {
+                let mut dataset = self
+                    .fetch_spooled_data::<T>(spooled, columns.clone())
+                    .await?;
+
+                let mut next = res.next_uri;
+                while let Some(url) = &next {
+                    let mut res = self.get_next_retry::<T>(url).await?;
+                    next = res.next_uri;
+
+                    if columns.is_none() {
+                        columns = res.columns.take();
+                    }
+
+                    if let Some(error) = res.error {
+                        if error.error_code == 4 {
+                            return Err(Error::Forbidden {
+                                message: error.message,
+                            });
+                        } else {
+                            return Err(Error::InternalError(format!(
+                                "Query failed with {} (error code {}): {}",
+                                error.error_name, error.error_code, error.message
+                            )));
+                        }
+                    }
+
+                    if let Some(data) = res.data {
+                        match data {
+                            QueryResultData::Direct(_) => {
+                                return Err(Error::InternalError(
+                                    "Cannot mix Direct and Spooled protocols in same query".to_string(),
+                                ));
+                            }
+                            QueryResultData::Spooled(spooled) => {
+                                log::info!("🗄️  Received SPOOLED protocol data - fetching from S3/MinIO");
+                                let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
+                                let next_dataset = self
+                                    .fetch_spooled_data::<T>(spooled, cols_for_spooled)
+                                    .await?;
+                                dataset.merge(next_dataset);
+                            }
+                        }
+                    }
+                }
+
+                Ok(dataset)
+            }
+            #[cfg(not(feature = "spooling"))]
+            Some(QueryResultData::Spooled(_)) => {
+                Err(Error::InternalError(
+                    "Server sent spooled data but 'spooling' feature is not enabled. \
+                     Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
+                ))
+            }
+            None => {
+                // No initial data, wait for next response to detect protocol
+                let mut next = res.next_uri;
+                let mut protocol_detected = false;
+                let mut all_rows: Vec<T> = Vec::new();
+                #[cfg(feature = "spooling")]
+                let mut dataset: Option<DataSet<T>> = None;
+
+                while let Some(url) = &next {
+                    let mut res = self.get_next_retry::<T>(url).await?;
+                    next = res.next_uri;
+
+                    if columns.is_none() {
+                        columns = res.columns.take();
+                    }
+
+                    if let Some(error) = res.error {
+                        if error.error_code == 4 {
+                            return Err(Error::Forbidden {
+                                message: error.message,
+                            });
+                        } else {
+                            return Err(Error::InternalError(format!(
+                                "Query failed with {} (error code {}): {}",
+                                error.error_name, error.error_code, error.message
+                            )));
+                        }
+                    }
+
+                    if let Some(data) = res.data {
+                        match data {
+                            QueryResultData::Direct(rows) => {
+                                if !protocol_detected {
+                                    protocol_detected = true;
+                                }
+                                all_rows.extend(rows);
+                            }
+                            #[cfg(feature = "spooling")]
+                            QueryResultData::Spooled(spooled) => {
+                                if !protocol_detected {
+                                    protocol_detected = true;
+                                    let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
+                                    dataset = Some(self.fetch_spooled_data::<T>(spooled, cols_for_spooled).await?);
+                                } else {
+                                    let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
+                                    let next_dataset = self.fetch_spooled_data::<T>(spooled, cols_for_spooled).await?;
+                                    if let Some(ref mut ds) = dataset {
+                                        ds.merge(next_dataset);
+                                    }
+                                }
+                            }
+                            #[cfg(not(feature = "spooling"))]
+                            QueryResultData::Spooled(_) => {
+                                return Err(Error::InternalError(
+                                    "Server sent spooled data but 'spooling' feature is not enabled. \
+                                     Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(feature = "spooling")]
+                if let Some(ds) = dataset {
+                    Ok(ds)
+                } else if !all_rows.is_empty() {
+                    build_dataset(all_rows, columns)
+                } else {
+                    Err(Error::EmptyData)
+                }
+                #[cfg(not(feature = "spooling"))]
+                if !all_rows.is_empty() {
+                    build_dataset(all_rows, columns)
+                } else {
+                    Err(Error::EmptyData)
                 }
             }
         }
+    }
 
-        if let Some(d) = ret {
-            Ok(d)
-        } else {
-            Err(Error::EmptyData)
+    #[cfg(feature = "spooling")]
+    async fn fetch_spooled_data<T: Trino + 'static>(
+        &self,
+        spooled: SpooledData,
+        columns: Option<Vec<crate::models::Column>>,
+    ) -> Result<DataSet<T>> {
+        let segment_bytes = self
+            .segment_fetcher
+            .fetch_segments(spooled.segments)
+            .await?;
+
+        let dataset = self.decode_segments::<T>(&spooled.encoding, segment_bytes, columns)?;
+
+        Ok(dataset)
+    }
+
+    #[cfg(feature = "spooling")]
+    #[allow(clippy::result_large_err)]
+    fn decode_segments<T: Trino + 'static>(
+        &self,
+        encoding: &str,
+        segment_bytes: Vec<Vec<u8>>,
+        columns: Option<Vec<crate::models::Column>>,
+    ) -> Result<DataSet<T>> {
+        let cols = columns.ok_or_else(|| {
+            Error::InternalError("Column metadata required for spooling protocol".to_string())
+        })?;
+
+        let mut all_rows: Vec<Vec<serde_json::Value>> = Vec::new();
+
+        let encoding = SpoolingEncoding::try_from(encoding).map_err(|e| {
+            Error::InternalError(format!(
+                "Failed to parse encoding: {}. Only 'json' based formats are supported.",
+                e
+            ))
+        })?;
+
+        for bytes in segment_bytes {
+            let json_str = decompress_segment_bytes(&bytes, &encoding)?;
+
+            let mut rows: Vec<Vec<serde_json::Value>> =
+                serde_json::from_str(&json_str).map_err(|e| {
+                    Error::InternalError(format!("Failed to parse segment JSON: {}", e))
+                })?;
+
+            all_rows.append(&mut rows);
         }
+
+        let json_obj = serde_json::json!({
+            "columns": cols,
+            "data": all_rows
+        });
+
+        let dataset: DataSet<T> = serde_json::from_value(json_obj)
+            .map_err(|e| Error::InternalError(format!("Failed to deserialize DataSet: {}", e)))?;
+
+        Ok(dataset)
     }
 
     /**
@@ -465,19 +766,31 @@ impl Client {
             .with_max_delay(Duration::from_secs(2))
     }
 
-    async fn get_retry<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
+    async fn get_retry<T>(&self, sql: String) -> Result<QueryResult<T>>
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de>,
+    {
         let result = || async { self.get::<T>(sql.clone()).await };
 
         result.retry(self.retry_policy()).when(need_retry).await
     }
 
-    async fn get_next_retry<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
+    async fn get_next_retry<T>(&self, url: &str) -> Result<QueryResult<T>>
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de>,
+    {
         let result = || async { self.get_next(url).await };
 
         result.retry(self.retry_policy()).when(need_retry).await
     }
 
-    pub async fn get<T: Trino + 'static>(&self, sql: String) -> Result<QueryResult<T>> {
+    pub async fn get<T>(&self, sql: String) -> Result<QueryResult<T>>
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de>,
+    {
         let req = self
             .client
             .post(format!("{}v1/statement", self.url))
@@ -489,13 +802,20 @@ impl Client {
 
         let req = self.auth_req(req);
         self.send(req, StatusCode::OK, |resp| async {
-            let data = resp.json::<QueryResult<T>>().await?;
+            let text = resp.text().await?;
+
+            let data: QueryResult<T> = serde_json::from_str(&text)
+                .map_err(|e| Error::InternalError(format!("Failed to parse response: {}", e)))?;
             Ok(data)
         })
         .await
     }
 
-    pub async fn get_next<T: Trino + 'static>(&self, url: &str) -> Result<QueryResult<T>> {
+    pub async fn get_next<T>(&self, url: &str) -> Result<QueryResult<T>>
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de>,
+    {
         let req = self.client.get(url);
         let req = {
             let session = self.session.read().await;
@@ -504,7 +824,9 @@ impl Client {
 
         let req = self.auth_req(req);
         self.send(req, StatusCode::OK, |resp| async {
-            let data = resp.json::<QueryResult<T>>().await?;
+            let text = resp.text().await?;
+            let data: QueryResult<T> = serde_json::from_str(&text)
+                .map_err(|e| Error::InternalError(format!("Failed to parse response: {}", e)))?;
             Ok(data)
         })
         .await

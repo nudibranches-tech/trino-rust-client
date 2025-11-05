@@ -49,7 +49,6 @@ impl<'de> DeserializeSeed<'de> for RowSeed {
     }
 }
 
-// Also implement Deserialize directly for Row
 impl<'de> Deserialize<'de> for Row {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

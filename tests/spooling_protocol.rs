@@ -35,10 +35,12 @@ fn test_spooled_data_deserialization() {
             "encoding": "json",
             "segments": [
                 {
+                    "type": "inline",
                     "data": "W3siaWQiOjEsIm5hbWUiOiJhbGljZSJ9XQ==",
                     "metadata": {}
                 },
                 {
+                    "type": "inline",
                     "data": "W3siaWQiOjIsIm5hbWUiOiJib2IifV0=",
                     "metadata": {}
                 }
@@ -163,6 +165,7 @@ fn test_mixed_protocol_detection() {
             "encoding": "json",
             "segments": [
                 {
+                    "type": "inline",
                     "data": "W3siaWQiOjEsIm5hbWUiOiJhbGljZSJ9XQ==",
                     "metadata": {}
                 }
