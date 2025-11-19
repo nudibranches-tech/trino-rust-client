@@ -1,0 +1,17 @@
+[dependencies]
+futures = {workspace = true}
+log = {workspace = true}
+reqwest = {workspace = true}
+tokio = {workspace = true}
+tracing-subscriber = {workspace = true}
+trino-rust-client = {path = "..", features = ["spooling"]}
+uuid = {workspace = true}
+
+[package]
+authors = {workspace = true}
+edition = {workspace = true}
+homepage = {workspace = true}
+license = {workspace = true}
+name = "trino-integration-tests"
+repository = {workspace = true}
+version = {workspace = true}
