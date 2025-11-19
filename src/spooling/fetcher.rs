@@ -86,7 +86,7 @@ impl SegmentFetcher {
                     Error::InternalError(format!("Failed to fetch {}: {}", segment_info, e))
                 })
             })
-            .buffer_unordered(self.max_concurrent_segments)
+            .buffered(self.max_concurrent_segments)
             .collect()
             .await;
 
