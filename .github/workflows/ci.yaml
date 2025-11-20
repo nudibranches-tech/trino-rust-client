@@ -38,7 +38,17 @@ jobs:
           command: check
           args: -Z features=dev_dep
 
-      - name: Run cargo test
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
+
+      - name: Run cargo test (unit tests with spooling feature)
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --workspace --exclude trino-integration-tests --features spooling
+
+      - name: Run integration tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --package trino-integration-tests
