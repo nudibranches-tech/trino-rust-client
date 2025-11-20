@@ -17,6 +17,8 @@ pub static HEADER_CLIENT_TAGS: &str = "X-Trino-Client-Tags";
 pub static HEADER_CLIENT_CAPABILITIES: &str = "X-Trino-Client-Capabilities";
 pub static HEADER_RESOURCE_ESTIMATE: &str = "X-Trino-Resource-Estimate";
 pub static HEADER_EXTRA_CREDENTIAL: &str = "X-Trino-Extra-Credential";
+#[cfg(feature = "spooling")]
+pub static HEADER_SPOOLING: &str = "X-Trino-Query-Data-Encoding";
 
 // response headers
 pub static HEADER_SET_CATALOG: &str = "X-Trino-Set-Catalog";

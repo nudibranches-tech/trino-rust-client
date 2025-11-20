@@ -67,6 +67,48 @@ impl DataSet<Row> {
     }
 }
 
+/// Helper function to build DataSet from Vec<T> without unsafe code
+/// Uses T::ty() to determine approach - only requires columns for Row type (Unknown)
+pub fn build_dataset<T: Trino + 'static>(
+    rows: Vec<T>,
+    columns: Option<Vec<Column>>,
+) -> Result<DataSet<T>, crate::error::Error> {
+    match T::ty() {
+        TrinoTy::Unknown => {
+            // Row type: columns are required since T::ty() returns Unknown
+            let cols = columns.ok_or_else(|| {
+                crate::error::Error::InternalError("No columns available for Row type".to_string())
+            })?;
+
+            // Convert columns to types - move columns instead of cloning
+            let types: Vec<(String, TrinoTy)> = cols
+                .into_iter()
+                .map(TrinoTy::from_column)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(|e| {
+                    crate::error::Error::InternalError(format!("Failed to convert columns: {}", e))
+                })?;
+
+            if types.is_empty() {
+                return Err(crate::error::Error::InternalError(
+                    "Empty columns for Row type".to_string(),
+                ));
+            }
+
+            // Directly construct DataSet for Row type (same as deserializer does at line 241-242)
+            // We already have Vec<T> where T = Row, no need to deserialize
+            Ok(DataSet { types, data: rows })
+        }
+        _ => {
+            // Non-Row types: use DataSet::new which infers types from T::ty()
+            // This works for all types that have a known TrinoTy (not Unknown)
+            DataSet::new(rows).map_err(|e| {
+                crate::error::Error::InternalError(format!("Failed to create DataSet: {}", e))
+            })
+        }
+    }
+}
+
 impl<T: Trino + Clone> Clone for DataSet<T> {
     fn clone(&self) -> Self {
         DataSet {

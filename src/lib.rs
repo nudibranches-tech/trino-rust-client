@@ -7,6 +7,8 @@ pub mod error;
 
 mod header;
 pub mod models;
+#[cfg(feature = "spooling")]
+pub mod spooling;
 
 pub mod selected_role;
 pub mod session;

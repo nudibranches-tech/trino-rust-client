@@ -1,9 +1,10 @@
 use std::env::var;
 
 use dotenv::dotenv;
+use serde::{Deserialize, Serialize};
 use trino_rust_client::{ClientBuilder, Trino};
 
-#[derive(Trino, Debug)]
+#[derive(Trino, Debug, Deserialize, Serialize)]
 struct Foo {
     a: i64,
     b: f64,
