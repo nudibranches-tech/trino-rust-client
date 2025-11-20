@@ -24,10 +24,10 @@ Fork rationale  :
 ```toml
 # Cargo.toml
 [dependencies]
-trino-rust-client = "0.9.0"
+trino-rust-client = "0.9.1"
 
 # For spooling protocol support
-trino-rust-client = { version = "0.9.0", features = ["spooling"] }
+trino-rust-client = { version = "0.9.1", features = ["spooling"] }
 ```
 
 ## Example
