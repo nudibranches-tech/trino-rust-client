@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 
+## [0.9.0] - 2025-11-20
+### Added
+- Spooling protocol support for efficient large result set handling [#26](https://github.com/nudibranches-tech/trino-rust-client/pull/26)
+- New `spooling_encoding` configuration option (supports json+zstd, json+lz4, json+gzip)
+- New `max_concurrent_segments` configuration for controlling concurrent downloads
+- Spooling feature flag with compression support (zstd, lz4, gzip)
+
+## [0.8.0] - 2025-01-XX
+### Added
+- Return execute result with operation type and counts [#24](https://github.com/nudibranches-tech/trino-rust-client/pull/24)
+
+### Fixed
+- Fixed prepared statement header decoding [#23](https://github.com/nudibranches-tech/trino-rust-client/pull/23)
+- Ensure finished prepared statement's results are parsed accordingly [#22](https://github.com/nudibranches-tech/trino-rust-client/pull/22)
+
 ## [0.5.1] - 2023-10-19
 - Make Client::get and some functions public [#29](https://github.com/nooberfsh/prusto/pull/29)
 
@@ -38,7 +53,9 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [0.1.0] - 2020-10-01
 - Initial release
 
-[Unreleased]: https://github.com/nooberfsh/prusto/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.5.1...v0.8.0
 [0.5.1]: https://github.com/nooberfsh/prusto/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nooberfsh/prusto/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nooberfsh/prusto/compare/v0.3.0...v0.4.0

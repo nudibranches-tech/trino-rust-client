@@ -16,12 +16,18 @@ Fork rationale  :
 - Basic Auth
 - Jwt Auth
 
+### protocols:
+- Spooling Protocol (for efficient large result set handling)
+
 ## Installation
 
 ```toml
 # Cargo.toml
 [dependencies]
-trino-rust-client = "0.7.3"
+trino-rust-client = "0.9.0"
+
+# For spooling protocol support
+trino-rust-client = { version = "0.9.0", features = ["spooling"] }
 ```
 
 ## Example
@@ -108,6 +114,40 @@ async fn main() {
         let first_name = row.value().get(0).unwrap();
         let last_name = row.value().get(1).unwrap();
         println!("{} : {}", first_name, last_name);
+    }
+}
+```
+
+### Spooling Protocol example
+```rust
+use trino_rust_client::{ClientBuilder, Trino};
+
+#[derive(Trino, Debug)]
+struct User {
+    id: i64,
+    name: String,
+    email: String,
+}
+
+#[tokio::main]
+async fn main() {
+    let cli = ClientBuilder::new("user", "localhost")
+        .port(8080)
+        .catalog("memory")
+        .schema("default")
+        .spooling_encoding("json+zstd")  // Enable spooling with compression
+        .max_concurrent_segments(10)      // Optional: control concurrent downloads
+        .build()
+        .unwrap();
+
+    let sql = "SELECT id, name, email FROM users LIMIT 1000";
+
+    let data = cli.get_all::<User>(sql.into()).await.unwrap();
+
+    println!("Retrieved {} rows", data.len());
+
+    for user in data.as_slice() {
+        println!("{:?}", user);
     }
 }
 ```
