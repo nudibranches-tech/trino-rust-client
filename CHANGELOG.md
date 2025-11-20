@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 
+## [0.9.2] - 2025-11-20
+### Changed
+- Bumped trino-rust-client-macros to 0.7.1
+- Integration tests are no longer published to crates.io
+
 ## [0.9.1] - 2025-11-20
 ### Added
 - Spooling protocol support for efficient large result set handling [#26](https://github.com/nudibranches-tech/trino-rust-client/pull/26)
@@ -56,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [0.1.0] - 2020-10-01
 - Initial release
 
-[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.8.0...v0.9.1
 [0.8.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.5.1...v0.8.0
 [0.5.1]: https://github.com/nooberfsh/prusto/compare/v0.5.0...v0.5.1
