@@ -25,7 +25,7 @@ impl fmt::Debug for Auth {
                 .field("password", &"******")
                 .finish(),
 
-            Auth::Jwt(token) => f.debug_struct("JwtAuth").field("token", token).finish(),
+            Auth::Jwt(_) => f.debug_struct("JwtAuth").field("token", &"******").finish(),
         }
     }
 }
