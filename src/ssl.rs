@@ -17,7 +17,6 @@ impl Default for Ssl {
 }
 
 impl Ssl {
-    #[allow(clippy::result_large_err)]
     pub fn read_pem<P: AsRef<Path>>(root_certificate_path: &P) -> Result<Certificate> {
         let buf = Self::read_file(&root_certificate_path)?;
         match reqwest::Certificate::from_pem(&buf) {
@@ -29,7 +28,6 @@ impl Ssl {
         }
     }
 
-    #[allow(clippy::result_large_err)]
     pub fn read_der<P: AsRef<Path>>(root_certificate_path: &P) -> Result<Certificate> {
         let buf = Self::read_file(&root_certificate_path)?;
         match reqwest::Certificate::from_der(&buf) {
@@ -41,7 +39,6 @@ impl Ssl {
         }
     }
 
-    #[allow(clippy::result_large_err)]
     fn read_file<P: AsRef<Path>>(file_path: &P) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
         std::fs::File::open(file_path)
