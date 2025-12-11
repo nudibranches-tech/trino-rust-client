@@ -6,7 +6,6 @@ use thiserror::Error;
 use crate::models::QueryError;
 
 #[derive(Error, Debug)]
-#[allow(clippy::result_large_err)]
 pub enum Error {
     #[error("invalid catalog")]
     InvalidCatalog,
@@ -39,7 +38,7 @@ pub enum Error {
     #[error("basic auth can not be used with http")]
     BasicAuthWithHttp,
     #[error("http error, reason: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[source] Box<reqwest::Error>),
     #[error("http not ok, code: {0}, reason: {1}")]
     HttpNotOk(StatusCode, String),
     #[error("query error, reason: {0}")]
@@ -54,6 +53,12 @@ pub enum Error {
     InvalidHost(String),
     #[error("internal error: {0}")]
     InternalError(String),
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
+        Error::HttpError(Box::new(err))
+    }
 }
 
 impl From<QueryError> for Error {
