@@ -46,7 +46,7 @@ pub struct Client {
 pub struct ClientBuilder {
     session: SessionBuilder,
     auth: Option<Auth>,
-    auth_http_insecure: false,
+    auth_http_insecure: bool,
     max_attempt: usize,
     ssl: Option<Ssl>,
     no_verify: bool,
