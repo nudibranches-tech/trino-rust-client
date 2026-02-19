@@ -46,6 +46,7 @@ pub struct Client {
 pub struct ClientBuilder {
     session: SessionBuilder,
     auth: Option<Auth>,
+    auth_http_insecure: bool,
     max_attempt: usize,
     ssl: Option<Ssl>,
     no_verify: bool,
@@ -68,6 +69,7 @@ impl ClientBuilder {
         Self {
             session: builder,
             auth: None,
+            auth_http_insecure: false,
             max_attempt: 3,
             ssl: None,
             no_verify: false,
@@ -237,6 +239,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn auth_http_insecure(mut self, ahi: bool) -> Self {
+        self.auth_http_insecure = ahi;
+        self
+    }
+
     pub fn max_attempt(mut self, s: usize) -> Self {
         self.max_attempt = s;
         self
@@ -251,7 +258,7 @@ impl ClientBuilder {
         let session = self.session.build()?;
         let max_attempt = self.max_attempt;
 
-        if self.auth.is_some() && session.url.scheme() == "http" {
+        if (self.auth.is_some() && session.url.scheme() == "http") && !self.auth_http_insecure {
             return Err(Error::BasicAuthWithHttp);
         }
 
