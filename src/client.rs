@@ -455,6 +455,41 @@ fn need_retry(e: &Error) -> bool {
     }
 }
 
+fn check_query_error(error: crate::models::QueryError) -> Error {
+    if error.error_code == 4 {
+        Error::Forbidden {
+            message: error.message,
+        }
+    } else {
+        Error::InternalError(format!(
+            "Query failed with {} (error code {}): {}",
+            error.error_name, error.error_code, error.message
+        ))
+    }
+}
+
+enum Accumulator<T: Trino> {
+    Undecided,
+    Direct(Vec<T>),
+    #[cfg(feature = "spooling")]
+    Spooled(DataSet<T>),
+}
+
+fn finalize_accumulator<T: Trino + 'static>(
+    acc: Accumulator<T>,
+    columns: Option<Vec<crate::models::Column>>,
+) -> Result<DataSet<T>> {
+    match acc {
+        Accumulator::Direct(rows) => build_dataset(rows, columns),
+        #[cfg(feature = "spooling")]
+        Accumulator::Spooled(dataset) => Ok(dataset),
+        // No data pages were received at all (every response had data: null).
+        // This is distinct from receiving an empty Direct page (vec![]),
+        // which goes through build_dataset and can return a valid empty DataSet.
+        Accumulator::Undecided => Err(Error::EmptyData),
+    }
+}
+
 impl Client {
     pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>
     where
@@ -463,193 +498,90 @@ impl Client {
     {
         let res = self.get_retry(sql).await?;
 
-        // Store columns from responses (used for Direct protocol DataSet construction)
         let mut columns = res.columns;
+        let mut acc = Accumulator::Undecided;
 
-        match res.data {
-            Some(QueryResultData::Direct(rows)) => {
-                // Direct protocol: accumulate Vec<T>, convert to DataSet at the end
-                let mut all_rows = rows;
+        if let Some(error) = res.error {
+            return Err(check_query_error(error));
+        }
 
-                let mut next = res.next_uri;
-                while let Some(url) = &next {
-                    let mut res = self.get_next_retry(url).await?;
-                    next = res.next_uri;
+        if let Some(data) = res.data {
+            acc = self.process_data_page(acc, data, &mut columns).await?;
+        }
 
-                    // Collect columns from any response that has them
-                    if columns.is_none() {
-                        columns = res.columns.take();
-                    }
+        let mut next = res.next_uri;
+        while let Some(url) = &next {
+            let mut res = self.get_next_retry::<T>(url).await?;
+            next = res.next_uri;
 
-                    if let Some(error) = res.error {
-                        if error.error_code == 4 {
-                            return Err(Error::Forbidden {
-                                message: error.message,
-                            });
-                        } else {
-                            return Err(Error::InternalError(format!(
-                                "Query failed with {} (error code {}): {}",
-                                error.error_name, error.error_code, error.message
-                            )));
-                        }
-                    }
+            if columns.is_none() {
+                columns = res.columns.take();
+            }
 
-                    if let Some(data) = res.data {
-                        match data {
-                            QueryResultData::Direct(rows) => {
-                                all_rows.extend(rows);
-                            }
-                            #[cfg(feature = "spooling")]
-                            QueryResultData::Spooled(_) => {
-                                return Err(Error::InternalError(
-                                    "Cannot mix Direct and Spooled protocols in same query".to_string(),
-                                ));
-                            }
-                            #[cfg(not(feature = "spooling"))]
-                            QueryResultData::Spooled(_) => {
-                                return Err(Error::InternalError(
-                                    "Server sent spooled data but 'spooling' feature is not enabled. \
-                                     Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
-                                ));
-                            }
-                        }
-                    }
-                }
+            if let Some(error) = res.error {
+                return Err(check_query_error(error));
+            }
 
-                build_dataset(all_rows, columns)
+            if let Some(data) = res.data {
+                acc = self.process_data_page(acc, data, &mut columns).await?;
+            }
+        }
+
+        finalize_accumulator(acc, columns)
+    }
+
+    async fn process_data_page<T>(
+        &self,
+        acc: Accumulator<T>,
+        data: QueryResultData<T>,
+        #[allow(unused_variables)] columns: &mut Option<Vec<crate::models::Column>>,
+    ) -> Result<Accumulator<T>>
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de> + serde::Serialize,
+    {
+        match (acc, data) {
+            // Direct data into Undecided or existing Direct
+            (Accumulator::Undecided, QueryResultData::Direct(rows)) => {
+                Ok(Accumulator::Direct(rows))
+            }
+            (Accumulator::Direct(mut all_rows), QueryResultData::Direct(rows)) => {
+                all_rows.extend(rows);
+                Ok(Accumulator::Direct(all_rows))
+            }
+
+            // Spooled data with spooling feature enabled
+            #[cfg(feature = "spooling")]
+            (Accumulator::Undecided, QueryResultData::Spooled(spooled)) => {
+                let cols = columns.clone();
+                let dataset = self.fetch_spooled_data::<T>(spooled, cols).await?;
+                Ok(Accumulator::Spooled(dataset))
             }
             #[cfg(feature = "spooling")]
-            Some(QueryResultData::Spooled(spooled)) => {
-                let mut dataset = self
-                    .fetch_spooled_data::<T>(spooled, columns.clone())
-                    .await?;
-
-                let mut next = res.next_uri;
-                while let Some(url) = &next {
-                    let mut res = self.get_next_retry::<T>(url).await?;
-                    next = res.next_uri;
-
-                    if columns.is_none() {
-                        columns = res.columns.take();
-                    }
-
-                    if let Some(error) = res.error {
-                        if error.error_code == 4 {
-                            return Err(Error::Forbidden {
-                                message: error.message,
-                            });
-                        } else {
-                            return Err(Error::InternalError(format!(
-                                "Query failed with {} (error code {}): {}",
-                                error.error_name, error.error_code, error.message
-                            )));
-                        }
-                    }
-
-                    if let Some(data) = res.data {
-                        match data {
-                            QueryResultData::Direct(_) => {
-                                return Err(Error::InternalError(
-                                    "Cannot mix Direct and Spooled protocols in same query".to_string(),
-                                ));
-                            }
-                            QueryResultData::Spooled(spooled) => {
-                                log::info!("🗄️  Received SPOOLED protocol data - fetching from S3/MinIO");
-                                let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
-                                let next_dataset = self
-                                    .fetch_spooled_data::<T>(spooled, cols_for_spooled)
-                                    .await?;
-                                dataset.merge(next_dataset);
-                            }
-                        }
-                    }
-                }
-
-                Ok(dataset)
+            (Accumulator::Spooled(mut dataset), QueryResultData::Spooled(spooled)) => {
+                log::info!("Received SPOOLED protocol data - fetching from S3/MinIO");
+                let cols = columns.clone();
+                let next_dataset = self.fetch_spooled_data::<T>(spooled, cols).await?;
+                dataset.merge(next_dataset);
+                Ok(Accumulator::Spooled(dataset))
             }
+
+            // Spooled data without spooling feature
             #[cfg(not(feature = "spooling"))]
-            Some(QueryResultData::Spooled(_)) => {
+            (_, QueryResultData::Spooled(_)) => {
                 Err(Error::InternalError(
                     "Server sent spooled data but 'spooling' feature is not enabled. \
                      Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
                 ))
             }
-            None => {
-                // No initial data, wait for next response to detect protocol
-                let mut next = res.next_uri;
-                let mut protocol_detected = false;
-                let mut all_rows: Vec<T> = Vec::new();
-                #[cfg(feature = "spooling")]
-                let mut dataset: Option<DataSet<T>> = None;
 
-                while let Some(url) = &next {
-                    let mut res = self.get_next_retry::<T>(url).await?;
-                    next = res.next_uri;
-
-                    if columns.is_none() {
-                        columns = res.columns.take();
-                    }
-
-                    if let Some(error) = res.error {
-                        if error.error_code == 4 {
-                            return Err(Error::Forbidden {
-                                message: error.message,
-                            });
-                        } else {
-                            return Err(Error::InternalError(format!(
-                                "Query failed with {} (error code {}): {}",
-                                error.error_name, error.error_code, error.message
-                            )));
-                        }
-                    }
-
-                    if let Some(data) = res.data {
-                        match data {
-                            QueryResultData::Direct(rows) => {
-                                if !protocol_detected {
-                                    protocol_detected = true;
-                                }
-                                all_rows.extend(rows);
-                            }
-                            #[cfg(feature = "spooling")]
-                            QueryResultData::Spooled(spooled) => {
-                                if !protocol_detected {
-                                    protocol_detected = true;
-                                    let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
-                                    dataset = Some(self.fetch_spooled_data::<T>(spooled, cols_for_spooled).await?);
-                                } else {
-                                    let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
-                                    let next_dataset = self.fetch_spooled_data::<T>(spooled, cols_for_spooled).await?;
-                                    if let Some(ref mut ds) = dataset {
-                                        ds.merge(next_dataset);
-                                    }
-                                }
-                            }
-                            #[cfg(not(feature = "spooling"))]
-                            QueryResultData::Spooled(_) => {
-                                return Err(Error::InternalError(
-                                    "Server sent spooled data but 'spooling' feature is not enabled. \
-                                     Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
-                                ));
-                            }
-                        }
-                    }
-                }
-
-                #[cfg(feature = "spooling")]
-                if let Some(ds) = dataset {
-                    Ok(ds)
-                } else if !all_rows.is_empty() {
-                    build_dataset(all_rows, columns)
-                } else {
-                    Err(Error::EmptyData)
-                }
-                #[cfg(not(feature = "spooling"))]
-                if !all_rows.is_empty() {
-                    build_dataset(all_rows, columns)
-                } else {
-                    Err(Error::EmptyData)
-                }
+            // Protocol mismatch
+            #[cfg(feature = "spooling")]
+            (Accumulator::Direct(_), QueryResultData::Spooled(_))
+            | (Accumulator::Spooled(_), QueryResultData::Direct(_)) => {
+                Err(Error::InternalError(
+                    "Cannot mix Direct and Spooled protocols in same query".to_string(),
+                ))
             }
         }
     }
@@ -933,7 +865,31 @@ fn decode_kv_from_header(input: &HeaderValue) -> Option<(String, String)> {
 mod tests {
     use reqwest::header::HeaderValue;
 
-    use crate::client::decode_kv_from_header;
+    use crate::client::{
+        check_query_error, decode_kv_from_header, finalize_accumulator, Accumulator,
+    };
+    use crate::error::Error;
+    use crate::models::{FailureInfo, QueryError};
+    use crate::Row;
+
+    fn make_query_error(error_code: i32, error_name: &str, message: &str) -> QueryError {
+        QueryError {
+            message: message.to_string(),
+            sql_state: None,
+            error_code,
+            error_name: error_name.to_string(),
+            error_type: "USER_ERROR".to_string(),
+            error_location: None,
+            failure_info: FailureInfo {
+                ty: "test".to_string(),
+                suppressed: vec![],
+                stack: vec![],
+                message: None,
+                cause: None,
+                error_location: None,
+            },
+        }
+    }
 
     #[test]
     fn test_decode_kv_from_header_plus_sign_to_space() {
@@ -953,5 +909,55 @@ mod tests {
         let (key, value) = result.unwrap();
         assert_eq!(key, "statement");
         assert_eq!(value, "show tables");
+    }
+
+    #[test]
+    fn test_check_query_error_forbidden() {
+        let error = make_query_error(4, "PERMISSION_DENIED", "Access denied");
+        match check_query_error(error) {
+            Error::Forbidden { message } => assert_eq!(message, "Access denied"),
+            other => panic!("Expected Forbidden, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_check_query_error_internal() {
+        let error = make_query_error(1, "GENERIC_INTERNAL_ERROR", "Something broke");
+        match check_query_error(error) {
+            Error::InternalError(msg) => {
+                assert!(msg.contains("GENERIC_INTERNAL_ERROR"));
+                assert!(msg.contains("error code 1"));
+                assert!(msg.contains("Something broke"));
+            }
+            other => panic!("Expected InternalError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_finalize_accumulator_undecided_returns_empty_data() {
+        let result = finalize_accumulator::<Row>(Accumulator::Undecided, None);
+        assert!(matches!(result, Err(Error::EmptyData)));
+    }
+
+    #[test]
+    fn test_finalize_accumulator_direct_empty_without_columns() {
+        // Row type requires columns — should error, not panic
+        let result = finalize_accumulator::<Row>(Accumulator::Direct(vec![]), None);
+        assert!(result.is_err());
+        assert!(!matches!(result, Err(Error::EmptyData)));
+    }
+
+    #[test]
+    fn test_finalize_accumulator_direct_with_columns() {
+        use crate::models::{Column, RawTrinoTy, TypeSignature};
+
+        let columns = vec![Column {
+            name: "id".to_string(),
+            ty: "integer".to_string(),
+            type_signature: Some(TypeSignature::new(RawTrinoTy::Integer, vec![])),
+        }];
+        let result = finalize_accumulator::<Row>(Accumulator::Direct(vec![]), Some(columns));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
     }
 }
