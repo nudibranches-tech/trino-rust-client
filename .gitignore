@@ -4,3 +4,4 @@ Cargo.lock
 .idea
 main.rs
 .env
+.PLAN.md
