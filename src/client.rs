@@ -483,6 +483,9 @@ fn finalize_accumulator<T: Trino + 'static>(
         Accumulator::Direct(rows) => build_dataset(rows, columns),
         #[cfg(feature = "spooling")]
         Accumulator::Spooled(dataset) => Ok(dataset),
+        // No data pages were received at all (every response had data: null).
+        // This is distinct from receiving an empty Direct page (vec![]),
+        // which goes through build_dataset and can return a valid empty DataSet.
         Accumulator::Undecided => Err(Error::EmptyData),
     }
 }
@@ -497,6 +500,10 @@ impl Client {
 
         let mut columns = res.columns;
         let mut acc = Accumulator::Undecided;
+
+        if let Some(error) = res.error {
+            return Err(check_query_error(error));
+        }
 
         if let Some(data) = res.data {
             acc = self.process_data_page(acc, data, &mut columns).await?;
@@ -858,7 +865,31 @@ fn decode_kv_from_header(input: &HeaderValue) -> Option<(String, String)> {
 mod tests {
     use reqwest::header::HeaderValue;
 
-    use crate::client::decode_kv_from_header;
+    use crate::client::{
+        check_query_error, decode_kv_from_header, finalize_accumulator, Accumulator,
+    };
+    use crate::error::Error;
+    use crate::models::{FailureInfo, QueryError};
+    use crate::Row;
+
+    fn make_query_error(error_code: i32, error_name: &str, message: &str) -> QueryError {
+        QueryError {
+            message: message.to_string(),
+            sql_state: None,
+            error_code,
+            error_name: error_name.to_string(),
+            error_type: "USER_ERROR".to_string(),
+            error_location: None,
+            failure_info: FailureInfo {
+                ty: "test".to_string(),
+                suppressed: vec![],
+                stack: vec![],
+                message: None,
+                cause: None,
+                error_location: None,
+            },
+        }
+    }
 
     #[test]
     fn test_decode_kv_from_header_plus_sign_to_space() {
@@ -878,5 +909,55 @@ mod tests {
         let (key, value) = result.unwrap();
         assert_eq!(key, "statement");
         assert_eq!(value, "show tables");
+    }
+
+    #[test]
+    fn test_check_query_error_forbidden() {
+        let error = make_query_error(4, "PERMISSION_DENIED", "Access denied");
+        match check_query_error(error) {
+            Error::Forbidden { message } => assert_eq!(message, "Access denied"),
+            other => panic!("Expected Forbidden, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_check_query_error_internal() {
+        let error = make_query_error(1, "GENERIC_INTERNAL_ERROR", "Something broke");
+        match check_query_error(error) {
+            Error::InternalError(msg) => {
+                assert!(msg.contains("GENERIC_INTERNAL_ERROR"));
+                assert!(msg.contains("error code 1"));
+                assert!(msg.contains("Something broke"));
+            }
+            other => panic!("Expected InternalError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_finalize_accumulator_undecided_returns_empty_data() {
+        let result = finalize_accumulator::<Row>(Accumulator::Undecided, None);
+        assert!(matches!(result, Err(Error::EmptyData)));
+    }
+
+    #[test]
+    fn test_finalize_accumulator_direct_empty_without_columns() {
+        // Row type requires columns — should error, not panic
+        let result = finalize_accumulator::<Row>(Accumulator::Direct(vec![]), None);
+        assert!(result.is_err());
+        assert!(!matches!(result, Err(Error::EmptyData)));
+    }
+
+    #[test]
+    fn test_finalize_accumulator_direct_with_columns() {
+        use crate::models::{Column, RawTrinoTy, TypeSignature};
+
+        let columns = vec![Column {
+            name: "id".to_string(),
+            ty: "integer".to_string(),
+            type_signature: Some(TypeSignature::new(RawTrinoTy::Integer, vec![])),
+        }];
+        let result = finalize_accumulator::<Row>(Accumulator::Direct(vec![]), Some(columns));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
     }
 }
