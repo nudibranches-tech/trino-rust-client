@@ -105,7 +105,7 @@ async fn test_spooling_protocol_encodings() {
 
                 let first = &rows.as_slice()[0];
                 assert_eq!(
-                    first.value().get(0).unwrap(),
+                    first.value().first().unwrap(),
                     &1i64,
                     "First ID mismatch ({})",
                     encoding
@@ -119,7 +119,7 @@ async fn test_spooling_protocol_encodings() {
 
                 let last = &rows.as_slice()[99];
                 assert_eq!(
-                    last.value().get(0).unwrap(),
+                    last.value().first().unwrap(),
                     &100i64,
                     "Last ID mismatch ({})",
                     encoding
