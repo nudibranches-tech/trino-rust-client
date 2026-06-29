@@ -173,10 +173,11 @@ fn extract(target: &TrinoTy, provided: &TrinoTy) -> Result<Vec<(usize, Vec<usize
 }
 
 // TODO:
-// VarBinary Json
-// TimestampWithTimeZone TimeWithTimeZone
-// HyperLogLog P4HyperLogLog
-// QDigest
+// * VarBinary Json
+// * TimestampWithTimeZone TimeWithTimeZone
+// * HyperLogLog P4HyperLogLog
+// * QDigest
+// * Geometry (Trino 482 added support alongside with Iceberg v3 tables)
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrinoTy {
     Date,

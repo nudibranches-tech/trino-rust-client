@@ -1,4 +1,5 @@
 use trino_rust_client::tuples::*;
+use trino_rust_client::types::*;
 use trino_rust_client::Trino;
 
 #[derive(Trino)]
@@ -110,9 +111,35 @@ fn test_wrap() {
     assert_eq!(a.value(), Tuple1(&1));
 }
 
+fn test_name_attribute() {
+    #[derive(Trino)]
+    struct Renamed {
+        #[trino(rename = "a")]
+        b: u32,
+
+        #[trino(rename = "column with spaces")]
+        query_plan: String,
+    }
+
+    let result = Renamed {
+        b: 42,
+        query_plan: "...".to_owned(),
+    };
+
+    assert_eq!(
+        Renamed::ty(),
+        TrinoTy::Row(vec![
+            ("a".to_owned(), TrinoTy::TrinoInt(TrinoInt::I32)),
+            ("column with spaces".to_owned(), TrinoTy::Varchar)
+        ])
+    );
+    assert_eq!(result.value(), Tuple2(&42, &"...".to_owned()));
+}
+
 fn main() {
     test_simple();
     test_nested();
     test_generic();
     test_wrap();
+    test_name_attribute();
 }

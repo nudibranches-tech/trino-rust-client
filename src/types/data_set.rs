@@ -67,7 +67,7 @@ impl DataSet<Row> {
     }
 }
 
-/// Helper function to build DataSet from Vec<T> without unsafe code
+/// Helper function to build DataSet from [`Vec<T>`]` without unsafe code
 /// Uses T::ty() to determine approach - only requires columns for Row type (Unknown)
 pub fn build_dataset<T: Trino + 'static>(
     rows: Vec<T>,
