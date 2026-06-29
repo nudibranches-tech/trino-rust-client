@@ -39,9 +39,8 @@ path = "examples/spooling.rs"
 required-features = ["spooling"]
 
 [features]
-Trino = []
 default = []
-spooling = ["base64", "zstd", "lz4", "flate2"]
+spooling = ["dep:base64", "dep:zstd", "dep:lz4", "dep:flate2"]
 
 [package]
 authors = {workspace = true}
