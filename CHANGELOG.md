@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+### Added
+- Derive `Serialize` on the result, error, stat, warning and segment model types to allow serializing query results [#42](https://github.com/nudibranches-tech/trino-rust-client/pull/42)
 
 ## [0.9.3] - 2026-02-19
 ### Added

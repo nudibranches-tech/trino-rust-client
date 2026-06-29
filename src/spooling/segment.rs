@@ -29,7 +29,7 @@ impl DataAttributes {
 }
 
 // Segment is a part of a query result when using the spooling protocol
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", untagged)]
 pub enum Segment {
     // Inlined segment
