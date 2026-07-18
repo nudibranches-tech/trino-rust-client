@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Added
 - Support configuring the name of the result field when using the `Trino` derive macro [#43](https://github.com/nudibranches-tech/trino-rust-client/pull/43)
+- Derive `Serialize` on the result, error, stat, warning and segment model types to allow serializing query results (credit to [@sbernauer](https://github.com/sbernauer), originally [#42](https://github.com/nudibranches-tech/trino-rust-client/pull/42))
 
 ## [0.9.3] - 2026-02-19
 ### Added

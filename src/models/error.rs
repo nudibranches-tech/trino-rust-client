@@ -1,8 +1,8 @@
 use std::fmt;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryError {
     pub message: String,
@@ -14,14 +14,14 @@ pub struct QueryError {
     pub failure_info: FailureInfo,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorLocation {
     pub line_number: u32,
     pub column_number: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FailureInfo {
     #[serde(rename = "type")]

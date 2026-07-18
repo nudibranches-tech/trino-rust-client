@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::*;
@@ -9,7 +9,7 @@ use crate::spooling::{decode_inline_segment, Segment};
 use crate::Trino;
 
 /// Query result data can be either Direct (inline array) or Spooled (compressed segments)
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum QueryResultData<T: Trino> {
@@ -43,7 +43,7 @@ where
 }
 
 /// Spooled data contains encoding format and segment references
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpooledData {
     pub encoding: String,
@@ -85,7 +85,7 @@ impl SpooledData {
 }
 
 /// Metadata about spooled data segments
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataAttributes {
     pub rows_count: Option<u64>,
@@ -95,7 +95,7 @@ pub struct DataAttributes {
 }
 
 /// Trino query result
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryResult<T: Trino> {
     pub id: String,
