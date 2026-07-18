@@ -17,11 +17,11 @@ jobs:
 
     - name: Set up Rust
       id: rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
+        components: rustfmt, clippy
 
-    - uses: actions/setup-python@v3
+    - uses: actions/setup-python@v5
     - name: Run pre-commit
       uses: pre-commit/action@v3.0.1
       env:
