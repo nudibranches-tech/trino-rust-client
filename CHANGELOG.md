@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+### Security
+- Updated dependencies to remediate 13 RustSec advisories in transitive crates, including `aws-lc-sys` (X.509/PKCS7 validation bypasses, timing side-channel), `quinn-proto` (DoS, memory exhaustion), `rustls-webpki` (CRL/name-constraint validation, parsing panic), `bytes` (integer overflow) and `slab` (out-of-bounds, yanked)
+
+### Changed
+- Refreshed direct dependency versions (`backon`, `chrono`, `futures`, `http`, `log`, `regex`, `reqwest`, `serde_json`, `tokio`, `tracing-subscriber`, `uuid`)
+- Replaced the unmaintained `dotenv` dev-dependency with the maintained `dotenvy`
+
 ### Removed
 - **Breaking:** Removed the unused `Trino` feature [#40](https://github.com/nudibranches-tech/trino-rust-client/pull/40)
 - **Breaking:** The optional `spooling` codec dependencies (`base64`, `zstd`, `lz4`, `flate2`) are no longer exposed as standalone public features; they are now declared via `dep:` and can only be enabled through the `spooling` feature [#40](https://github.com/nudibranches-tech/trino-rust-client/pull/40)

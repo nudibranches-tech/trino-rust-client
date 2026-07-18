@@ -28,7 +28,7 @@ uuid = {workspace = true}
 zstd = {workspace = true, optional = true}
 
 [dev-dependencies]
-dotenv = "0.15"
+dotenvy = "0.15"
 maplit = "1.0"
 trybuild = "1.0.112"
 wiremock = "0.6.5"
@@ -64,30 +64,30 @@ required-features = ["spooling"]
 members = [".", "trino-rust-client-macros", "integration_tests"]
 
 [workspace.dependencies]
-backon = "1.5.2"
+backon = "1.6.0"
 base64 = "0.22"
 bigdecimal = "0.4.10"
-chrono = "0.4.43"
+chrono = "0.4.45"
 chrono-tz = "0.10.4"
 derive_more = {version = "2.1.1", features = ["full"]}
 flate2 = "1.1.9"
-futures = "0.3.32"
-http = "1.4"
+futures = "0.3.33"
+http = "1.4.2"
 iterable = "0.6"
 lazy_static = "1.5"
-log = "0.4.29"
+log = "0.4.33"
 lz4 = "1.28"
 paste = "1.0.15"
-regex = "1.12.3"
-reqwest = {version = "0.13.2", default-features = false, features = ["rustls", "json"]}
+regex = "1.13.1"
+reqwest = {version = "0.13.4", default-features = false, features = ["rustls", "json"]}
 serde = {version = "1.0", features = ["derive"]}
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 thiserror = "2.0.18"
-tokio = {version = "1.49", features = ["full"]}
-tracing-subscriber = {version = "0.3.22", default-features = false, features = ["fmt", "env-filter"]}
+tokio = {version = "1.53", features = ["full"]}
+tracing-subscriber = {version = "0.3.23", default-features = false, features = ["fmt", "env-filter"]}
 trino-rust-client-macros = {version = "0.7.1", path = "trino-rust-client-macros"}
 url = "2.5.8"
-uuid = {version = "1.21.0", features = ["serde", "v4"]}
+uuid = {version = "1.24.0", features = ["serde", "v4"]}
 zstd = "0.13"
 
 [workspace.package]

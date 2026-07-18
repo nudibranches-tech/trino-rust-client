@@ -1,6 +1,6 @@
 use std::env::var;
 
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use trino_rust_client::auth::Auth;
 use trino_rust_client::ssl::Ssl;
 use trino_rust_client::{ClientBuilder, Row};

@@ -1,6 +1,6 @@
 use std::env::var;
 
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use serde::{Deserialize, Serialize};
 use trino_rust_client::{ClientBuilder, Trino};
 
