@@ -485,7 +485,8 @@ fn map_page_error(error: QueryError) -> Error {
 /// never buffered in memory.
 ///
 /// `RowStream` is [`Unpin`], so it can be polled directly (e.g. with
-/// [`StreamExt::next`](futures::StreamExt::next)) without `pin!`.
+/// [`StreamExt::next`](futures::StreamExt::next)) without `pin!`, and [`Send`],
+/// so it can be held across `.await` inside a spawned task.
 ///
 /// # Cancellation
 /// Dropping a `RowStream` before it is exhausted stops the client from
@@ -495,7 +496,7 @@ fn map_page_error(error: QueryError) -> Error {
 /// server resources on early termination.
 pub struct RowStream<'a, T> {
     columns: Vec<(String, TrinoTy)>,
-    inner: Pin<Box<dyn Stream<Item = Result<T>> + 'a>>,
+    inner: Pin<Box<dyn Stream<Item = Result<T>> + Send + 'a>>,
 }
 
 impl<T> RowStream<'_, T> {
@@ -553,7 +554,7 @@ impl Client {
     /// ```
     pub async fn stream<'a, T>(&'a self, sql: impl Into<String>) -> Result<RowStream<'a, T>>
     where
-        T: Trino + 'static,
+        T: Trino + Send + 'static,
         for<'de> T: serde::Deserialize<'de>,
     {
         let sql = sql.into();

@@ -104,6 +104,33 @@ async fn test_stream_yields_rows_across_pages() {
     assert_eq!(rows.len(), 3, "expected 3 rows streamed across 3 pages");
 }
 
+// A RowStream must be `Send` so it can be held across `.await` inside a
+// spawned task (a very common pattern in async services). This test would fail
+// to compile if the inner boxed stream were not `Send`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_stream_is_send_and_spawnable() {
+    let (server, host, port) = make_mock_server().await;
+    mount_paged_result(&server).await;
+
+    let count = tokio::spawn(async move {
+        let cli = client(host, port);
+        let mut stream = cli.stream::<Row>("SELECT * FROM t").await.unwrap();
+        let mut n = 0usize;
+        while let Some(item) = stream.next().await {
+            item.unwrap();
+            n += 1;
+        }
+        n
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        count, 3,
+        "streaming inside a spawned task should yield 3 rows"
+    );
+}
+
 #[tokio::test]
 async fn test_stream_empty_result_set() {
     let (server, host, port) = make_mock_server().await;
