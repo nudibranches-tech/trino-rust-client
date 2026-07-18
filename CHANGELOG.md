@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 - Refreshed direct dependency versions (`backon`, `chrono`, `futures`, `http`, `log`, `regex`, `reqwest`, `serde_json`, `tokio`, `tracing-subscriber`, `uuid`) [#44](https://github.com/nudibranches-tech/trino-rust-client/pull/44)
 - Replaced the unmaintained `dotenv` dev-dependency with the maintained `dotenvy` [#44](https://github.com/nudibranches-tech/trino-rust-client/pull/44)
+- Bumped `trino-rust-client-macros` to 0.7.2 (adds `#[trino(rename = "...")]` support)
 
 ### Removed
 - **Breaking:** Removed the unused `Trino` feature [#40](https://github.com/nudibranches-tech/trino-rust-client/pull/40)
