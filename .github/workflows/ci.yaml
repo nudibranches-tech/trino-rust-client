@@ -3,7 +3,7 @@ name: Build and test
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
 
 jobs:
@@ -16,39 +16,25 @@ jobs:
         os: [ubuntu-latest]
         rust: [stable, nightly]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install latest ${{ matrix.rust }}
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all --benches --bins --examples --tests --all-features
+        run: cargo check --all --benches --bins --examples --tests --all-features
 
       - name: Run cargo check (without dev-dependencies to catch missing feature flags)
         if: startsWith(matrix.rust, 'nightly')
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: -Z features=dev_dep
+        run: cargo check -Z features=dev_dep
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
 
       - name: Run cargo test (unit tests with spooling feature)
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --exclude trino-integration-tests --features spooling
+        run: cargo test --workspace --exclude trino-integration-tests --features spooling
 
       - name: Run integration tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package trino-integration-tests
+        run: cargo test --package trino-integration-tests
