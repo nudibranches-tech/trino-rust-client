@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use backon::ExponentialBuilder;
 use backon::Retryable;
@@ -17,6 +19,9 @@ use crate::build_dataset;
 use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
+#[cfg(feature = "spooling")]
+use crate::models::Column;
+use crate::models::QueryError;
 use crate::models::QueryResultData;
 #[cfg(feature = "spooling")]
 use crate::models::SpooledData;
@@ -28,6 +33,7 @@ use crate::spooling::decompress_segment_bytes;
 use crate::spooling::{SegmentFetcher, SpoolingEncoding};
 use crate::ssl::Ssl;
 use crate::transaction::TransactionId;
+use crate::types::TrinoTy;
 use crate::{DataSet, QueryResult, Row, Trino};
 
 // TODO:
@@ -457,7 +463,7 @@ fn need_retry(e: &Error) -> bool {
 }
 
 /// Map a per-page Trino error (carried in `QueryResult::error`) to a client [`Error`].
-fn map_page_error(error: crate::models::QueryError) -> Error {
+fn map_page_error(error: QueryError) -> Error {
     // error_code 4 is Trino's PERMISSION_DENIED
     if error.error_code == 4 {
         Error::Forbidden {
@@ -471,17 +477,61 @@ fn map_page_error(error: crate::models::QueryError) -> Error {
     }
 }
 
+/// A lazy stream of query rows, with the result schema resolved up front.
+///
+/// Created by [`Client::stream`]. The result column schema is available
+/// immediately via [`RowStream::columns`]; rows are then produced lazily,
+/// page by page, by the [`Stream`] implementation — the whole result set is
+/// never buffered in memory.
+///
+/// `RowStream` is [`Unpin`], so it can be polled directly (e.g. with
+/// [`StreamExt::next`](futures::StreamExt::next)) without `pin!`.
+///
+/// # Cancellation
+/// Dropping a `RowStream` before it is exhausted stops the client from
+/// fetching further pages, but does **not** cancel the query on the Trino
+/// coordinator; the query lives on until it completes or the server times it
+/// out. Call [`Client::cancel`] with the query id if you need to release
+/// server resources on early termination.
+pub struct RowStream<'a, T> {
+    columns: Vec<(String, TrinoTy)>,
+    inner: Pin<Box<dyn Stream<Item = Result<T>> + 'a>>,
+}
+
+impl<T> RowStream<'_, T> {
+    /// The result schema (column name and Trino type), resolved before the
+    /// first row is produced.
+    pub fn columns(&self) -> &[(String, TrinoTy)] {
+        &self.columns
+    }
+}
+
+impl<T> Stream for RowStream<'_, T> {
+    type Item = Result<T>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().inner.as_mut().poll_next(cx)
+    }
+}
+
 impl Client {
     /// Execute `sql` and stream the resulting rows lazily, page by page, without
     /// buffering the whole result set in memory.
     ///
-    /// Trino returns results as a chain of pages linked by `nextUri`; this method
-    /// follows that chain on demand and yields each row as it is decoded. Prefer it
-    /// over [`Client::get_all`] for large result sets.
+    /// Trino returns results as a chain of pages linked by `nextUri`. This method
+    /// first drives the query far enough to resolve the result schema (so
+    /// [`RowStream::columns`] is available up front), then hands back a
+    /// [`RowStream`] that follows the remaining pages on demand, yielding each
+    /// row as it is decoded. Prefer it over [`Client::get_all`] for large result
+    /// sets.
     ///
     /// Both the Direct and (with the `spooling` feature) Spooled protocols are
-    /// supported. With spooling, rows are still materialized one segment at a time
-    /// rather than for the entire query, keeping peak memory bounded.
+    /// supported. With spooling, rows are still materialized one segment at a
+    /// time rather than for the entire query, keeping peak memory bounded.
+    ///
+    /// Unlike [`Client::get_all`], this does not reject a query that mixes the
+    /// Direct and Spooled protocols across pages; each page is decoded according
+    /// to its own protocol.
     ///
     /// The returned stream borrows `self`, so it must not outlive the [`Client`].
     ///
@@ -492,8 +542,8 @@ impl Client {
     /// use futures::StreamExt;
     ///
     /// let client = ClientBuilder::new("user", "localhost").port(8080).build()?;
-    /// let mut rows = client.stream::<Row>("SELECT 1");
-    /// tokio::pin!(rows);
+    /// let mut rows = client.stream::<Row>("SELECT 1").await?;
+    /// println!("columns: {:?}", rows.columns());
     /// while let Some(row) = rows.next().await {
     ///     let row = row?;
     ///     // use row
@@ -501,18 +551,46 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn stream<'a, T>(&'a self, sql: impl Into<String>) -> impl Stream<Item = Result<T>> + 'a
+    pub async fn stream<'a, T>(&'a self, sql: impl Into<String>) -> Result<RowStream<'a, T>>
     where
         T: Trino + 'static,
         for<'de> T: serde::Deserialize<'de>,
     {
         let sql = sql.into();
-        async_stream::try_stream! {
-            let mut res = self.get_retry::<T>(sql).await?;
-            // Column metadata is only guaranteed on the first page that carries it;
-            // remember it so later spooled pages can be decoded.
+
+        // Prime the query until the schema is known: follow pages until one
+        // carries `columns` (or the query finishes without any). Errors on these
+        // early pages are surfaced eagerly.
+        let mut res = self.get_retry::<T>(sql).await?;
+        loop {
+            if let Some(error) = res.error.take() {
+                return Err(map_page_error(error));
+            }
+            if res.columns.is_some() || res.data.is_some() {
+                break;
+            }
+            match res.next_uri.clone() {
+                Some(url) => res = self.get_next_retry::<T>(&url).await?,
+                None => break,
+            }
+        }
+
+        let columns = match res.columns.clone() {
+            Some(cols) => cols
+                .into_iter()
+                .map(TrinoTy::from_column)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(|e| Error::InternalError(format!("Failed to convert columns: {}", e)))?,
+            None => Vec::new(),
+        };
+
+        let inner = async_stream::try_stream! {
+            // `res` already holds the first schema-bearing page (with its data,
+            // if any); keep decoding from there.
+            let mut res = res;
+            // Track raw columns across pages so later spooled pages can be decoded.
             #[cfg(feature = "spooling")]
-            let mut columns = res.columns.clone();
+            let mut raw_columns: Option<Vec<Column>> = res.columns.clone();
 
             loop {
                 if let Some(error) = res.error.take() {
@@ -520,8 +598,8 @@ impl Client {
                 }
 
                 #[cfg(feature = "spooling")]
-                if columns.is_none() {
-                    columns = res.columns.clone();
+                if raw_columns.is_none() {
+                    raw_columns = res.columns.clone();
                 }
 
                 if let Some(data) = res.data.take() {
@@ -533,7 +611,7 @@ impl Client {
                         }
                         #[cfg(feature = "spooling")]
                         QueryResultData::Spooled(spooled) => {
-                            let cols = columns.clone().or_else(|| res.columns.clone());
+                            let cols = raw_columns.clone().or_else(|| res.columns.clone());
                             let ds = self.fetch_spooled_data::<T>(spooled, cols).await?;
                             for row in ds.into_vec() {
                                 yield row;
@@ -549,14 +627,19 @@ impl Client {
                     }
                 }
 
-                match res.next_uri.clone() {
+                match res.next_uri.take() {
                     Some(url) => {
                         res = self.get_next_retry::<T>(&url).await?;
                     }
                     None => break,
                 }
             }
-        }
+        };
+
+        Ok(RowStream {
+            columns,
+            inner: Box::pin(inner),
+        })
     }
 
     pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>

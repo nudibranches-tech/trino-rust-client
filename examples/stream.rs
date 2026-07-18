@@ -24,8 +24,8 @@ async fn main() {
         .build()
         .unwrap();
 
-    let stream = cli.stream::<Row>(sql);
-    tokio::pin!(stream);
+    let mut stream = cli.stream::<Row>(sql).await.unwrap();
+    println!("columns: {:?}", stream.columns());
 
     let mut count = 0usize;
     while let Some(row) = stream.next().await {

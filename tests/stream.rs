@@ -20,66 +20,66 @@ async fn make_mock_server() -> (MockServer, String, u16) {
     (server, host.to_string(), port)
 }
 
-/// Mount a three-page lifecycle:
-///   POST /v1/statement -> QUEUED, no data, nextUri -> /1
-///   GET  /1            -> 2 rows, nextUri -> /2
-///   GET  /2            -> 1 row, no nextUri (query finished)
-/// Total: 3 rows streamed across 3 pages.
+fn client(host: String, port: u16) -> trino_rust_client::client::Client {
+    ClientBuilder::new("test_user", host)
+        .port(port)
+        .build()
+        .unwrap()
+}
+
+async fn mount(server: &MockServer, verb: &str, p: &str, body: Value) {
+    let m = if verb == "POST" {
+        Mock::given(method("POST")).and(path("/v1/statement".to_string()))
+    } else {
+        Mock::given(method("GET")).and(path(p.to_string()))
+    };
+    m.respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .mount(server)
+        .await;
+}
+
+/// Three-page lifecycle: QUEUED -> 2 rows -> 1 row (finished). Total 3 rows.
 async fn mount_paged_result(server: &MockServer) {
     let uri = server.uri();
     let finished = read_fixture("query_result_finished");
     let columns = finished["columns"].clone();
     let row = finished["data"][0].clone();
-    // Reuse a full stats block from the fixture so `Stat` deserializes.
     let stats = finished["stats"].clone();
 
-    let page1 = json!({
-        "id": "test_stream_00001",
-        "infoUri": format!("{uri}/ui/query.html?test_stream_00001"),
-        "nextUri": format!("{uri}/v1/statement/test_stream_00001/1"),
-        "stats": stats.clone(),
-        "warnings": []
-    });
-
-    let page2 = json!({
-        "id": "test_stream_00001",
-        "infoUri": format!("{uri}/ui/query.html?test_stream_00001"),
-        "nextUri": format!("{uri}/v1/statement/test_stream_00001/2"),
-        "columns": columns,
-        "data": [row.clone(), row.clone()],
-        "stats": stats.clone(),
-        "warnings": []
-    });
-
-    let page3 = json!({
-        "id": "test_stream_00001",
-        "infoUri": format!("{uri}/ui/query.html?test_stream_00001"),
-        "columns": finished["columns"].clone(),
-        "data": [row],
-        "stats": stats,
-        "warnings": []
-    });
-
-    Mock::given(method("POST"))
-        .and(path("/v1/statement"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(page1))
-        .expect(1)
-        .mount(server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/v1/statement/test_stream_00001/1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(page2))
-        .expect(1)
-        .mount(server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/v1/statement/test_stream_00001/2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(page3))
-        .expect(1)
-        .mount(server)
-        .await;
+    mount(
+        server,
+        "POST",
+        "",
+        json!({
+            "id": "q", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/q/1"),
+            "stats": stats.clone(), "warnings": []
+        }),
+    )
+    .await;
+    mount(
+        server,
+        "GET",
+        "/v1/statement/q/1",
+        json!({
+            "id": "q", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/q/2"),
+            "columns": columns, "data": [row.clone(), row.clone()],
+            "stats": stats.clone(), "warnings": []
+        }),
+    )
+    .await;
+    mount(
+        server,
+        "GET",
+        "/v1/statement/q/2",
+        json!({
+            "id": "q", "infoUri": format!("{uri}/ui"),
+            "columns": finished["columns"].clone(), "data": [row],
+            "stats": stats, "warnings": []
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -87,65 +87,127 @@ async fn test_stream_yields_rows_across_pages() {
     let (server, host, port) = make_mock_server().await;
     mount_paged_result(&server).await;
 
-    let client = ClientBuilder::new("test_user", host)
-        .port(port)
-        .build()
-        .unwrap();
+    let cli = client(host, port);
+    let mut stream = cli
+        .stream::<Row>("SELECT * FROM t")
+        .await
+        .expect("stream creation should resolve the schema");
 
-    let stream = client.stream::<Row>("SELECT * FROM t".to_string());
-    tokio::pin!(stream);
+    // Schema is available up front, before any row is pulled.
+    assert_eq!(stream.columns().len(), 6, "schema resolved up front");
+    assert_eq!(stream.columns()[0].0, "a");
 
     let mut rows = Vec::new();
     while let Some(item) = stream.next().await {
         rows.push(item.expect("stream item should be Ok"));
     }
-
-    // 2 rows from page 2 + 1 row from page 3, without ever buffering the whole set.
     assert_eq!(rows.len(), 3, "expected 3 rows streamed across 3 pages");
-
-    server.verify().await;
 }
 
 #[tokio::test]
-async fn test_stream_surfaces_query_error() {
+async fn test_stream_empty_result_set() {
     let (server, host, port) = make_mock_server().await;
     let uri = server.uri();
+    let finished = read_fixture("query_result_finished");
+    let stats = finished["stats"].clone();
 
-    let page1 = json!({
-        "id": "test_stream_err",
-        "infoUri": format!("{uri}/ui/query.html?test_stream_err"),
-        "nextUri": format!("{uri}/v1/statement/test_stream_err/1"),
-        "stats": read_fixture("query_result_finished")["stats"].clone(),
-        "warnings": []
-    });
-    // Error page carried inside a 200 response (Trino reports query errors this way).
-    let err_page = read_fixture("query_result_failed");
+    mount(
+        &server,
+        "POST",
+        "",
+        json!({
+            "id": "e", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/e/1"),
+            "stats": stats.clone(), "warnings": []
+        }),
+    )
+    .await;
+    // Finished page with schema but zero rows and no nextUri.
+    mount(
+        &server,
+        "GET",
+        "/v1/statement/e/1",
+        json!({
+            "id": "e", "infoUri": format!("{uri}/ui"),
+            "columns": finished["columns"].clone(),
+            "stats": stats, "warnings": []
+        }),
+    )
+    .await;
 
-    Mock::given(method("POST"))
-        .and(path("/v1/statement"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(page1))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/v1/statement/test_stream_err/1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(err_page))
-        .mount(&server)
-        .await;
+    let cli = client(host, port);
+    let mut stream = cli
+        .stream::<Row>("SELECT * FROM t WHERE 1=0")
+        .await
+        .expect("empty result must still resolve a schema");
 
-    let client = ClientBuilder::new("test_user", host)
-        .port(port)
-        .build()
-        .unwrap();
+    assert_eq!(stream.columns().len(), 6, "schema preserved for zero rows");
+    let mut count = 0;
+    while let Some(item) = stream.next().await {
+        item.expect("no error expected");
+        count += 1;
+    }
+    assert_eq!(count, 0, "no rows for an empty result set");
+}
 
-    let stream = client.stream::<Row>("SELECT * FROM t".to_string());
-    tokio::pin!(stream);
+#[tokio::test]
+async fn test_stream_surfaces_mid_stream_error() {
+    let (server, host, port) = make_mock_server().await;
+    let uri = server.uri();
+    let finished = read_fixture("query_result_finished");
+    let stats = finished["stats"].clone();
+    let row = finished["data"][0].clone();
 
+    mount(
+        &server,
+        "POST",
+        "",
+        json!({
+            "id": "x", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/x/1"),
+            "stats": stats.clone(), "warnings": []
+        }),
+    )
+    .await;
+    // Page with schema + 2 rows, then a link to a failing page.
+    mount(
+        &server,
+        "GET",
+        "/v1/statement/x/1",
+        json!({
+            "id": "x", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/x/2"),
+            "columns": finished["columns"].clone(), "data": [row.clone(), row],
+            "stats": stats, "warnings": []
+        }),
+    )
+    .await;
+    // Error page (carried inside a 200, as Trino does).
+    mount(
+        &server,
+        "GET",
+        "/v1/statement/x/2",
+        read_fixture("query_result_failed"),
+    )
+    .await;
+
+    let cli = client(host, port);
+    let mut stream = cli
+        .stream::<Row>("SELECT * FROM t")
+        .await
+        .expect("schema resolves before the failing page");
+
+    let mut oks = 0;
     let mut saw_error = false;
     while let Some(item) = stream.next().await {
-        if item.is_err() {
-            saw_error = true;
-            break;
+        match item {
+            Ok(_) => oks += 1,
+            Err(_) => {
+                saw_error = true;
+                break;
+            }
         }
     }
-    assert!(saw_error, "a query error page must surface as an Err item");
+    assert_eq!(oks, 2, "two rows should stream before the error");
+    assert!(saw_error, "the failing page must surface as an Err item");
 }

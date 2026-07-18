@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
-- `Client::stream` — lazily stream query rows page by page as a `futures::Stream`, without buffering the whole result set in memory (Direct and Spooled protocols)
+- `Client::stream` — lazily stream query rows page by page without buffering the whole result set in memory (Direct and Spooled protocols). Returns a `RowStream` that resolves the result schema up front (`RowStream::columns`) and implements `futures::Stream`
 
 ## [0.10.0] - 2026-07-18
 ### Security
