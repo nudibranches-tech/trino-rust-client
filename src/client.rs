@@ -639,17 +639,11 @@ impl Client {
                 #[cfg(feature = "spooling")]
                 if let Some(ds) = dataset {
                     Ok(ds)
-                } else if !all_rows.is_empty() {
-                    build_dataset(all_rows, columns)
                 } else {
-                    Err(Error::EmptyData)
+                    build_dataset(all_rows, columns)
                 }
                 #[cfg(not(feature = "spooling"))]
-                if !all_rows.is_empty() {
-                    build_dataset(all_rows, columns)
-                } else {
-                    Err(Error::EmptyData)
-                }
+                build_dataset(all_rows, columns)
             }
         }
     }
