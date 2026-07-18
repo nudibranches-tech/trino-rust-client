@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use backon::ExponentialBuilder;
 use backon::Retryable;
+use futures::Stream;
 use http::header::{ACCEPT_ENCODING, USER_AGENT};
 use http::StatusCode;
 use iterable::*;
@@ -455,7 +456,109 @@ fn need_retry(e: &Error) -> bool {
     }
 }
 
+/// Map a per-page Trino error (carried in `QueryResult::error`) to a client [`Error`].
+fn map_page_error(error: crate::models::QueryError) -> Error {
+    // error_code 4 is Trino's PERMISSION_DENIED
+    if error.error_code == 4 {
+        Error::Forbidden {
+            message: error.message,
+        }
+    } else {
+        Error::InternalError(format!(
+            "Query failed with {} (error code {}): {}",
+            error.error_name, error.error_code, error.message
+        ))
+    }
+}
+
 impl Client {
+    /// Execute `sql` and stream the resulting rows lazily, page by page, without
+    /// buffering the whole result set in memory.
+    ///
+    /// Trino returns results as a chain of pages linked by `nextUri`; this method
+    /// follows that chain on demand and yields each row as it is decoded. Prefer it
+    /// over [`Client::get_all`] for large result sets.
+    ///
+    /// Both the Direct and (with the `spooling` feature) Spooled protocols are
+    /// supported. With spooling, rows are still materialized one segment at a time
+    /// rather than for the entire query, keeping peak memory bounded.
+    ///
+    /// The returned stream borrows `self`, so it must not outlive the [`Client`].
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use trino_rust_client::{client::ClientBuilder, Row};
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// use futures::StreamExt;
+    ///
+    /// let client = ClientBuilder::new("user", "localhost").port(8080).build()?;
+    /// let mut rows = client.stream::<Row>("SELECT 1");
+    /// tokio::pin!(rows);
+    /// while let Some(row) = rows.next().await {
+    ///     let row = row?;
+    ///     // use row
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn stream<'a, T>(&'a self, sql: impl Into<String>) -> impl Stream<Item = Result<T>> + 'a
+    where
+        T: Trino + 'static,
+        for<'de> T: serde::Deserialize<'de>,
+    {
+        let sql = sql.into();
+        async_stream::try_stream! {
+            let mut res = self.get_retry::<T>(sql).await?;
+            // Column metadata is only guaranteed on the first page that carries it;
+            // remember it so later spooled pages can be decoded.
+            #[cfg(feature = "spooling")]
+            let mut columns = res.columns.clone();
+
+            loop {
+                if let Some(error) = res.error.take() {
+                    Err(map_page_error(error))?;
+                }
+
+                #[cfg(feature = "spooling")]
+                if columns.is_none() {
+                    columns = res.columns.clone();
+                }
+
+                if let Some(data) = res.data.take() {
+                    match data {
+                        QueryResultData::Direct(rows) => {
+                            for row in rows {
+                                yield row;
+                            }
+                        }
+                        #[cfg(feature = "spooling")]
+                        QueryResultData::Spooled(spooled) => {
+                            let cols = columns.clone().or_else(|| res.columns.clone());
+                            let ds = self.fetch_spooled_data::<T>(spooled, cols).await?;
+                            for row in ds.into_vec() {
+                                yield row;
+                            }
+                        }
+                        #[cfg(not(feature = "spooling"))]
+                        QueryResultData::Spooled(_) => {
+                            Err(Error::InternalError(
+                                "Server sent spooled data but 'spooling' feature is not enabled. \
+                                 Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
+                            ))?;
+                        }
+                    }
+                }
+
+                match res.next_uri.clone() {
+                    Some(url) => {
+                        res = self.get_next_retry::<T>(&url).await?;
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
     pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>
     where
         T: Trino + 'static,

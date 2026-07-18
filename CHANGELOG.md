@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+### Added
+- `Client::stream` — lazily stream query rows page by page as a `futures::Stream`, without buffering the whole result set in memory (Direct and Spooled protocols)
 
 ## [0.10.0] - 2026-07-18
 ### Security

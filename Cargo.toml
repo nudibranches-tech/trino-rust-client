@@ -1,4 +1,5 @@
 [dependencies]
+async-stream = {workspace = true}
 backon = {workspace = true}
 base64 = {workspace = true, optional = true}
 bigdecimal = {workspace = true}
@@ -64,6 +65,7 @@ required-features = ["spooling"]
 members = [".", "trino-rust-client-macros", "integration_tests"]
 
 [workspace.dependencies]
+async-stream = "0.3.6"
 backon = "1.6.0"
 base64 = "0.22"
 bigdecimal = "0.4.10"
