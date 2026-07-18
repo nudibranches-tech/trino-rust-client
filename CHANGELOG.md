@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+
+## [0.10.0] - 2026-07-18
 ### Security
 - Updated dependencies to remediate 13 RustSec advisories in transitive crates, including `aws-lc-sys` (X.509/PKCS7 validation bypasses, timing side-channel), `quinn-proto` (DoS, memory exhaustion), `rustls-webpki` (CRL/name-constraint validation, parsing panic), `bytes` (integer overflow) and `slab` (out-of-bounds, yanked) [#44](https://github.com/nudibranches-tech/trino-rust-client/pull/44)
 
@@ -85,7 +87,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [0.1.0] - 2020-10-01
 - Initial release
 
-[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.8.0...v0.9.1
