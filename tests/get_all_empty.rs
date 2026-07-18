@@ -67,7 +67,10 @@ async fn test_get_all_empty_result_set_row_type() {
     let (server, host, port) = make_mock_server().await;
     mount_empty_result_mocks(&server).await;
 
-    let client = ClientBuilder::new("test_user", host).port(port).build().unwrap();
+    let client = ClientBuilder::new("test_user", host)
+        .port(port)
+        .build()
+        .unwrap();
 
     let result = client
         .get_all::<Row>("SELECT a, b, c, d, e, f FROM t WHERE 1=0".to_string())
@@ -100,7 +103,10 @@ async fn test_get_all_empty_result_set_derived_type() {
     let (server, host, port) = make_mock_server().await;
     mount_empty_result_mocks(&server).await;
 
-    let client = ClientBuilder::new("test_user", host).port(port).build().unwrap();
+    let client = ClientBuilder::new("test_user", host)
+        .port(port)
+        .build()
+        .unwrap();
 
     let result = client
         .get_all::<Record>("SELECT a, b, c, d, f FROM t WHERE 1=0".to_string())
