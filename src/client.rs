@@ -716,7 +716,7 @@ impl Client {
      * Execute a SQL statement and return the result.
      * If the TRINO query returns an error, the method returns an error of type `Error::TrinoError`
      * @param sql The SQL statement to execute
-     * @return Result<ExecuteResult> The result of the execution
+     * @return [`Result<ExecuteResult>`]` The result of the execution
      * */
     pub async fn execute(&self, sql: String) -> Result<ExecuteResult> {
         // try the sql first

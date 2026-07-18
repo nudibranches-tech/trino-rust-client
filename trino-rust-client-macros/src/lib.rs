@@ -1,9 +1,22 @@
 use proc_macro2::*;
 use quote::*;
+use structmeta::StructMeta;
 use syn::spanned::Spanned;
 use syn::*;
 
-#[proc_macro_derive(Trino)]
+#[derive(StructMeta, Debug)]
+struct TrinoAttributes {
+    rename: LitStr,
+}
+
+/// Derive macro to parse and represent a Trino result table.
+///
+/// The following arguments are supported:
+///
+/// * `rename`: Specify a custom field name in the result table. This is useful in case the returned
+///   columns contain spaces (e.g. `Query Plan`).
+///   This is the equivalent to to `#[serde(rename = "name")]`.
+#[proc_macro_derive(Trino, attributes(trino))]
 pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let data = parse_macro_input!(input as ItemStruct);
 
@@ -26,9 +39,22 @@ fn derive_impl(data: ItemStruct) -> Result<TokenStream> {
     let tuplety = Ident::new(&format!("Tuple{}", fields.len()), Span::call_site());
 
     let keys = fields.iter().map(|f| f.ident.as_ref().unwrap());
-    let keys_lit = keys
-        .clone()
-        .map(|ident| LitStr::new(&format!("{}", ident), ident.span()));
+    let keys_lit = fields.iter().map(|field| {
+        let ident = field.ident.as_ref().unwrap();
+        let attrs = field
+            .attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("trino"))
+            .flat_map(|attr| attr.parse_args().ok())
+            .next();
+
+        let field_name = match attrs {
+            Some(TrinoAttributes { rename }) => rename.value(),
+            _ => ident.to_string(),
+        };
+
+        LitStr::new(&field_name, ident.span())
+    });
     let types = fields.iter().map(|f| &f.ty);
     let types1 = types.clone();
 

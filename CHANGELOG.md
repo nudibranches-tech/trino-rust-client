@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 - **Breaking:** Removed the unused `Trino` feature [#40](https://github.com/nudibranches-tech/trino-rust-client/pull/40)
 - **Breaking:** The optional `spooling` codec dependencies (`base64`, `zstd`, `lz4`, `flate2`) are no longer exposed as standalone public features; they are now declared via `dep:` and can only be enabled through the `spooling` feature [#40](https://github.com/nudibranches-tech/trino-rust-client/pull/40)
 
+### Added
+- Support configuring the name of the result field when using the `Trino` derive macro [#43](https://github.com/nudibranches-tech/trino-rust-client/pull/43)
+
 ## [0.9.3] - 2026-02-19
 ### Added
 - `auth_http_insecure` option to allow authentication over HTTP [#34](https://github.com/nudibranches-tech/trino-rust-client/pull/34)
