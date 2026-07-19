@@ -39,27 +39,45 @@ git checkout -b release/X.Y.Z
 - `cargo check` and `cargo check --features spooling`.
 - Commit `release X.Y.Z`, push the branch, open a PR.
 
-## 4. After the PR is merged — create the GitHub Release
+## 4. After the PR is merged — publish the release-drafter **draft**
+
+**Do not create a release by hand.** release-drafter maintains a **draft**
+GitHub Release (named `X.Y.Z 🌈`) that already lists every merged PR with its
+author — `- <title> @<author> (#<n>)` — so contributors are credited
+automatically. Publish and lightly edit **that draft** instead.
 
 ```bash
-gh release create X.Y.Z --target main --title "X.Y.Z 🌈" \
-  --notes-file <changelog-section> --latest
+gh release list --repo nudibranches-tech/trino-rust-client   # find the draft
 ```
 
-- **Tag: `X.Y.Z`** — no `v` prefix (matches every prior tag and the publish workflow).
-- **Title: `X.Y.Z 🌈`** — the rainbow is required (matches release-drafter's
-  `name-template`). Do not drop it.
-- **Notes**: the CHANGELOG entries for this version + a
-  `**Full Changelog**: .../compare/<prev>...<this>` link (non-`v` tags).
+Then publish it, fixing the tag/title/target and enriching the notes:
 
-Creating the tag triggers the publish workflow (~4 min). Watch it:
+```bash
+gh release edit <draft-tag> \
+  --tag X.Y.Z --target main --title "X.Y.Z 🌈" \
+  --notes-file <notes> --draft=false --latest
+```
+
+- **Tag: `X.Y.Z`** — no `v` prefix. The draft's version may be wrong (release-drafter
+  guesses from `semver:*` labels, which live in the tracking repo, not on these
+  PRs) — set it explicitly.
+- **Title: `X.Y.Z 🌈`** — keep the rainbow.
+- **Notes**: start from the draft's auto-generated `## Changes` (keep the
+  per-PR `@author` attribution — the whole point). Trino PRs usually carry no
+  `type:*` labels, so release-drafter won't categorise them well; tidy the
+  grouping/wording and add a `**Full Changelog**: .../compare/<prev>...<this>`
+  link if missing. Preserve the contributor `@mentions`.
+
+Publishing the draft creates the tag, which triggers the publish workflow
+(~4 min). Watch it and confirm both crates on crates.io:
 
 ```bash
 gh run watch <run-id> --exit-status
 ```
 
-Then confirm both crates on crates.io (`trino-rust-client` and
-`trino-rust-client-macros`).
+If no draft exists (release-drafter didn't run), fall back to
+`gh release create X.Y.Z --target main --title "X.Y.Z 🌈" --notes-file <notes> --latest`,
+and add a `## Contributors` section listing the PR authors by hand.
 
 ## Notes
 
