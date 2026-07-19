@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use backon::ExponentialBuilder;
 use backon::Retryable;
+use futures::Stream;
 use http::header::{ACCEPT_ENCODING, USER_AGENT};
 use http::StatusCode;
 use iterable::*;
@@ -16,6 +19,8 @@ use crate::build_dataset;
 use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
+use crate::models::Column;
+use crate::models::QueryError;
 use crate::models::QueryResultData;
 #[cfg(feature = "spooling")]
 use crate::models::SpooledData;
@@ -455,7 +460,226 @@ fn need_retry(e: &Error) -> bool {
     }
 }
 
+/// Map a per-page Trino error (carried in `QueryResult::error`) to a client [`Error`].
+fn map_page_error(error: QueryError) -> Error {
+    // error_code 4 is Trino's PERMISSION_DENIED
+    if error.error_code == 4 {
+        Error::Forbidden {
+            message: error.message,
+        }
+    } else {
+        Error::InternalError(format!(
+            "Query failed with {} (error code {}): {}",
+            error.error_name, error.error_code, error.message
+        ))
+    }
+}
+
+/// Everything needed to fire a best-effort query cancellation from
+/// [`RowStream`]'s `Drop`, without borrowing the [`Client`].
+struct CancelOnDrop {
+    client: reqwest::Client,
+    url: String,
+    auth: Option<Auth>,
+}
+
+/// A lazy stream of query rows, with the result columns resolved up front.
+///
+/// Created by [`Client::stream`]. The result columns are available immediately
+/// via [`RowStream::columns`]; rows are then produced lazily, page by page, by
+/// the [`Stream`] implementation — the whole result set is never buffered in
+/// memory.
+///
+/// `RowStream` is [`Unpin`], so it can be polled directly (e.g. with
+/// [`StreamExt::next`](futures::StreamExt::next)) without `pin!`, and [`Send`],
+/// so it can be held across `.await` inside a spawned task.
+///
+/// # Cancellation
+/// Dropping a `RowStream` before it is exhausted best-effort cancels the query
+/// on the Trino coordinator (a fire-and-forget `DELETE`), so early termination
+/// (`take`, `break`, an error, a dropped task) does not leave the query running
+/// server-side and holding coordinator resources. Cancellation is skipped once
+/// the query has finished normally, and requires a Tokio runtime to be active
+/// at drop time.
+pub struct RowStream<'a, T> {
+    columns: Vec<Column>,
+    cancel: Option<CancelOnDrop>,
+    inner: Pin<Box<dyn Stream<Item = Result<T>> + Send + 'a>>,
+}
+
+impl<T> RowStream<'_, T> {
+    /// The result columns (name, Trino type name and full type signature),
+    /// resolved before the first row is produced.
+    pub fn columns(&self) -> &[Column] {
+        &self.columns
+    }
+}
+
+impl<T> Stream for RowStream<'_, T> {
+    type Item = Result<T>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let me = self.get_mut();
+        let polled = me.inner.as_mut().poll_next(cx);
+        if let Poll::Ready(None) = polled {
+            // The query finished normally — there is nothing to cancel.
+            me.cancel = None;
+        }
+        polled
+    }
+}
+
+impl<T> Drop for RowStream<'_, T> {
+    fn drop(&mut self) {
+        let Some(cancel) = self.cancel.take() else {
+            return;
+        };
+        // Fire-and-forget; only possible from within a running Tokio runtime.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let mut req = cancel.client.delete(&cancel.url);
+                if let Some(auth) = &cancel.auth {
+                    req = match auth {
+                        Auth::Basic(u, p) => req.basic_auth(u, p.as_ref()),
+                        Auth::Jwt(t) => req.bearer_auth(t),
+                    };
+                }
+                let _ = req.send().await;
+            });
+        }
+    }
+}
+
 impl Client {
+    /// Execute `sql` and stream the resulting rows lazily, page by page, without
+    /// buffering the whole result set in memory.
+    ///
+    /// Trino returns results as a chain of pages linked by `nextUri`. This method
+    /// first drives the query far enough to resolve the result schema (so
+    /// [`RowStream::columns`] is available up front), then hands back a
+    /// [`RowStream`] that follows the remaining pages on demand, yielding each
+    /// row as it is decoded. Prefer it over [`Client::get_all`] for large result
+    /// sets.
+    ///
+    /// Both the Direct and (with the `spooling` feature) Spooled protocols are
+    /// supported. With spooling, rows are still materialized one segment at a
+    /// time rather than for the entire query, keeping peak memory bounded.
+    ///
+    /// Unlike [`Client::get_all`], this does not reject a query that mixes the
+    /// Direct and Spooled protocols across pages; each page is decoded according
+    /// to its own protocol.
+    ///
+    /// The returned stream borrows `self`, so it must not outlive the [`Client`].
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use trino_rust_client::{client::ClientBuilder, Row};
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// use futures::StreamExt;
+    ///
+    /// let client = ClientBuilder::new("user", "localhost").port(8080).build()?;
+    /// let mut rows = client.stream::<Row>("SELECT 1").await?;
+    /// println!("columns: {:?}", rows.columns());
+    /// while let Some(row) = rows.next().await {
+    ///     let row = row?;
+    ///     // use row
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn stream<'a, T>(&'a self, sql: impl Into<String>) -> Result<RowStream<'a, T>>
+    where
+        T: Trino + Send + 'static,
+        for<'de> T: serde::Deserialize<'de>,
+    {
+        let sql = sql.into();
+
+        // Prime the query until the schema is known: follow pages until one
+        // carries `columns` (or the query finishes without any). Errors on these
+        // early pages are surfaced eagerly.
+        let mut res = self.get_retry::<T>(sql).await?;
+        loop {
+            if let Some(error) = res.error.take() {
+                return Err(map_page_error(error));
+            }
+            if res.columns.is_some() || res.data.is_some() {
+                break;
+            }
+            match res.next_uri.clone() {
+                Some(url) => res = self.get_next_retry::<T>(&url).await?,
+                None => break,
+            }
+        }
+
+        let columns = res.columns.clone().unwrap_or_default();
+
+        // Capture what is needed to cancel the query on early drop, without
+        // borrowing `self` (so the cancel can be spawned as a 'static task).
+        let cancel = Some(CancelOnDrop {
+            client: self.client.clone(),
+            url: format!("{}v1/query/{}", self.url, res.id),
+            auth: self.auth.clone(),
+        });
+
+        let inner = async_stream::try_stream! {
+            // `res` already holds the first schema-bearing page (with its data,
+            // if any); keep decoding from there.
+            let mut res = res;
+            // Track raw columns across pages so later spooled pages can be decoded.
+            #[cfg(feature = "spooling")]
+            let mut raw_columns: Option<Vec<Column>> = res.columns.clone();
+
+            loop {
+                if let Some(error) = res.error.take() {
+                    Err(map_page_error(error))?;
+                }
+
+                #[cfg(feature = "spooling")]
+                if raw_columns.is_none() {
+                    raw_columns = res.columns.clone();
+                }
+
+                if let Some(data) = res.data.take() {
+                    match data {
+                        QueryResultData::Direct(rows) => {
+                            for row in rows {
+                                yield row;
+                            }
+                        }
+                        #[cfg(feature = "spooling")]
+                        QueryResultData::Spooled(spooled) => {
+                            let cols = raw_columns.clone().or_else(|| res.columns.clone());
+                            let ds = self.fetch_spooled_data::<T>(spooled, cols).await?;
+                            for row in ds.into_vec() {
+                                yield row;
+                            }
+                        }
+                        #[cfg(not(feature = "spooling"))]
+                        QueryResultData::Spooled(_) => {
+                            Err(Error::InternalError(
+                                "Server sent spooled data but 'spooling' feature is not enabled. \
+                                 Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
+                            ))?;
+                        }
+                    }
+                }
+
+                match res.next_uri.take() {
+                    Some(url) => {
+                        res = self.get_next_retry::<T>(&url).await?;
+                    }
+                    None => break,
+                }
+            }
+        };
+
+        Ok(RowStream {
+            columns,
+            cancel,
+            inner: Box::pin(inner),
+        })
+    }
+
     pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>
     where
         T: Trino + 'static,
