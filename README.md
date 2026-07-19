@@ -30,6 +30,11 @@ trino-rust-client = "0.10.0"
 trino-rust-client = { version = "0.10.0", features = ["spooling"] }
 ```
 
+## Upgrading
+
+Breaking changes between releases are documented with before/after examples in
+the [migration guide](MIGRATION.md).
+
 ## Example
 
 ### Basic example
