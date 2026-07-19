@@ -2,7 +2,7 @@
 futures = {workspace = true}
 log = {workspace = true}
 reqwest = {workspace = true}
-tokio = {workspace = true}
+tokio = {workspace = true, features = ["macros", "rt-multi-thread"]}
 tracing-subscriber = {workspace = true}
 trino-rust-client = {path = "..", features = ["spooling"]}
 uuid = {workspace = true}

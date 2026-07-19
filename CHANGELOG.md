@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 - `Client::stream` — lazily stream query rows page by page without buffering the whole result set in memory (Direct and Spooled protocols). Returns a `RowStream` that resolves the result columns up front (`RowStream::columns() -> &[Column]`), implements `futures::Stream`, is `Send`/`Unpin`, and best-effort cancels the query on the coordinator if dropped before completion
 
+### Changed
+- The library now depends on `tokio` with only the `rt` and `sync` features instead of `full`, shrinking the dependency footprint and compile time for consumers (no longer pulls `fs`/`process`/`signal`/…). Tests and examples keep the fuller feature set via dev-dependencies
+
 ## [0.10.0] - 2026-07-18
 ### Security
 - Updated dependencies to remediate 13 RustSec advisories in transitive crates, including `aws-lc-sys` (X.509/PKCS7 validation bypasses, timing side-channel), `quinn-proto` (DoS, memory exhaustion), `rustls-webpki` (CRL/name-constraint validation, parsing panic), `bytes` (integer overflow) and `slab` (out-of-bounds, yanked) [#44](https://github.com/nudibranches-tech/trino-rust-client/pull/44)
