@@ -64,6 +64,21 @@ Other error changes:
   (`query error [NAME]: message`); the full structured error is reachable via
   `std::error::Error::source()`.
 
+### Logging → tracing
+
+The client now emits [`tracing`](https://docs.rs/tracing) events instead of
+`log` records. **If your application only installs a `log` subscriber (e.g.
+`env_logger`), you will no longer see the client's logs.** Either install a
+`tracing` subscriber:
+
+```rust
+tracing_subscriber::fmt().with_env_filter("trino_rust_client=debug").init();
+```
+
+or bridge tracing back into `log` with
+[`tracing-log`](https://docs.rs/tracing-log). Each `get_all` / `stream` /
+`execute` call is wrapped in a span carrying the `query_id`.
+
 ### Cargo features
 
 - **The `Trino` feature was removed** (it was unused).

@@ -31,7 +31,7 @@ where
             QueryResultData::Direct(data) => data,
             #[cfg(feature = "spooling")]
             QueryResultData::Spooled(spooled) => spooled.parse_segments().unwrap_or_else(|e| {
-                log::error!("Failed to parse spooled segments: {}", e);
+                tracing::error!("Failed to parse spooled segments: {}", e);
                 Vec::new()
             }),
             #[cfg(not(feature = "spooling"))]

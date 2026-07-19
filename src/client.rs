@@ -9,10 +9,10 @@ use futures::Stream;
 use http::header::{ACCEPT_ENCODING, USER_AGENT};
 use http::StatusCode;
 use iterable::*;
-use log::*;
 use reqwest::header::HeaderValue;
 use reqwest::{RequestBuilder, Response, Url};
 use tokio::sync::RwLock;
+use tracing::*;
 
 use crate::auth::Auth;
 use crate::build_dataset;
@@ -225,7 +225,7 @@ impl ClientBuilder {
                 self.session.spooling_encoding = Some(encoding_str);
             }
             Err(_) => {
-                log::warn!(
+                tracing::warn!(
                     "Invalid spooling encoding '{}', using default 'json+zstd'. Valid values: json, json+zstd, json+lz4",
                     encoding_str
                 );
@@ -488,6 +488,10 @@ struct CancelOnDrop {
 pub struct RowStream<'a, T> {
     columns: Vec<Column>,
     cancel: Option<CancelOnDrop>,
+    // Entered on every poll so events emitted while streaming (page fetches,
+    // segment downloads) carry the query_id — the span from `stream()` itself
+    // would otherwise close as soon as the RowStream is handed back.
+    span: tracing::Span,
     inner: Pin<Box<dyn Stream<Item = Result<T>> + Send + 'a>>,
 }
 
@@ -504,6 +508,7 @@ impl<T> Stream for RowStream<'_, T> {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let me = self.get_mut();
+        let _enter = me.span.enter();
         let polled = me.inner.as_mut().poll_next(cx);
         if let Poll::Ready(None) = polled {
             // The query finished normally — there is nothing to cancel.
@@ -582,6 +587,11 @@ impl Client {
         // carries `columns` (or the query finishes without any). Errors on these
         // early pages are surfaced eagerly.
         let mut res = self.get_retry::<T>(sql).await?;
+        // Span stored on the RowStream and entered on each `poll_next`, so
+        // events emitted while streaming carry the query_id. (Entering it here
+        // across the priming `.await`s would be the guard-across-await
+        // anti-pattern; priming emits little, so it is left unspanned.)
+        let span = tracing::info_span!("query_stream", query_id = %res.id);
         loop {
             if let Some(error) = res.error.take() {
                 return Err(error.into());
@@ -660,16 +670,19 @@ impl Client {
         Ok(RowStream {
             columns,
             cancel,
+            span,
             inner: Box::pin(inner),
         })
     }
 
+    #[tracing::instrument(skip_all, fields(query_id = tracing::field::Empty))]
     pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>
     where
         T: Trino + 'static,
         for<'de> T: serde::Deserialize<'de> + serde::Serialize,
     {
         let res = self.get_retry(sql).await?;
+        tracing::Span::current().record("query_id", res.id.as_str());
 
         // Store columns from responses (used for Direct protocol DataSet construction)
         let mut columns = res.columns;
@@ -744,7 +757,7 @@ impl Client {
                                 ));
                             }
                             QueryResultData::Spooled(spooled) => {
-                                log::info!("🗄️  Received SPOOLED protocol data - fetching from S3/MinIO");
+                                tracing::info!("🗄️  Received SPOOLED protocol data - fetching from S3/MinIO");
                                 let cols_for_spooled = columns.clone().or_else(|| res.columns.take());
                                 let next_dataset = self
                                     .fetch_spooled_data::<T>(spooled, cols_for_spooled)
@@ -891,9 +904,11 @@ impl Client {
      * @param sql The SQL statement to execute
      * @return [`Result<ExecuteResult>`]` The result of the execution
      * */
+    #[tracing::instrument(skip_all, fields(query_id = tracing::field::Empty))]
     pub async fn execute(&self, sql: String) -> Result<ExecuteResult> {
         // try the sql first
         let res = self.get_retry::<Row>(sql).await?;
+        tracing::Span::current().record("query_id", res.id.as_str());
 
         let mut next = res.next_uri;
         let mut final_uri = next.clone();

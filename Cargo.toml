@@ -11,7 +11,6 @@ futures = {workspace = true}
 http = {workspace = true}
 iterable = {workspace = true}
 lazy_static = {workspace = true}
-log = {workspace = true}
 lz4 = {workspace = true, optional = true}
 paste = {workspace = true}
 regex = {workspace = true}
@@ -22,6 +21,7 @@ serde = {workspace = true}
 serde_json = {workspace = true}
 thiserror = {workspace = true}
 tokio = {workspace = true}
+tracing = {workspace = true}
 # self dependencies
 trino-rust-client-macros = {workspace = true}
 url = {workspace = true}
@@ -80,7 +80,6 @@ futures = "0.3.33"
 http = "1.4.2"
 iterable = "0.6"
 lazy_static = "1.5"
-log = "0.4.33"
 lz4 = "1.28"
 paste = "1.0.15"
 regex = "1.13.1"
@@ -89,6 +88,7 @@ serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0.150"
 thiserror = "2.0.18"
 tokio = {version = "1.53", features = ["rt", "sync"]}
+tracing = "0.1.44"
 tracing-subscriber = {version = "0.3.23", default-features = false, features = ["fmt", "env-filter"]}
 trino-rust-client-macros = {version = "0.7.2", path = "trino-rust-client-macros"}
 url = "2.5.8"

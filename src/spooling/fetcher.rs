@@ -55,7 +55,7 @@ impl SegmentFetcher {
                 // Acknowledge the segment if ackUri is provided
                 if let Some(ack) = ack_uri {
                     if let Err(e) = self.acknowledge_segment(ack, headers.as_ref()).await {
-                        log::warn!("Failed to acknowledge segment {}: {}", ack, e);
+                        tracing::warn!("Failed to acknowledge segment {}: {}", ack, e);
                     }
                 }
 
@@ -67,7 +67,7 @@ impl SegmentFetcher {
     /// Fetch multiple segments with controlled concurrency
     /// Uses buffered concurrency to limit the number of concurrent fetches
     pub async fn fetch_segments(&self, segments: Vec<Segment>) -> Result<Vec<Vec<u8>>> {
-        log::debug!(
+        tracing::debug!(
             "Fetching {} segments with max concurrency of {}",
             segments.len(),
             self.max_concurrent_segments
@@ -108,7 +108,7 @@ impl SegmentFetcher {
         uri: &str,
         headers: Option<&HashMap<String, Vec<String>>>,
     ) -> Result<Vec<u8>> {
-        log::debug!("Fetching spooled segment from: {}", uri);
+        tracing::debug!("Fetching spooled segment from: {}", uri);
 
         // Build GET request with optional headers
         let mut request = self.http_client.get(uri);
@@ -149,7 +149,7 @@ impl SegmentFetcher {
             .map(|s| s.to_string())
             .unwrap_or_else(|| "identity".to_string());
 
-        log::debug!(
+        tracing::debug!(
             "Remote segment Content-Encoding: {} from {}",
             content_encoding,
             uri
@@ -164,12 +164,12 @@ impl SegmentFetcher {
         // Decompress based on Content-Encoding header
         let decompressed_data = match content_encoding.to_lowercase().as_str() {
             "gzip" => {
-                log::debug!("Decompressing gzip content");
+                tracing::debug!("Decompressing gzip content");
                 decompress_gzip(&compressed_data)?
             }
             "identity" | "" => compressed_data.to_vec(),
             other => {
-                log::warn!(
+                tracing::warn!(
                     "Unknown Content-Encoding '{}', treating as uncompressed",
                     other
                 );
@@ -177,7 +177,7 @@ impl SegmentFetcher {
             }
         };
 
-        log::info!(
+        tracing::info!(
             "Successfully fetched remote spooled segment: {} bytes",
             decompressed_data.len()
         );
@@ -192,7 +192,7 @@ impl SegmentFetcher {
         ack_uri: &str,
         headers: Option<&HashMap<String, Vec<String>>>,
     ) -> Result<()> {
-        log::debug!("Acknowledging segment: {}", ack_uri);
+        tracing::debug!("Acknowledging segment: {}", ack_uri);
 
         let mut request = self.http_client.post(ack_uri);
 
@@ -213,7 +213,7 @@ impl SegmentFetcher {
         })?;
 
         if !response.status().is_success() {
-            log::warn!(
+            tracing::warn!(
                 "Acknowledgment returned non-success status: {} for {}",
                 response.status(),
                 ack_uri
