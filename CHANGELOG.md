@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-19
+
 > Upgrading from 0.10.x? See the [migration guide](MIGRATION.md).
 
 ### Added
@@ -108,7 +110,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [0.1.0] - 2020-10-01
 - Initial release
 
-[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.3...0.10.0
 [0.9.3]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.2...0.9.3
 [0.9.2]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.1...0.9.2
