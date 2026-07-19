@@ -35,6 +35,18 @@ trino-rust-client = { version = "0.10.0", features = ["spooling"] }
 Breaking changes between releases are documented with before/after examples in
 the [migration guide](MIGRATION.md).
 
+## Observability
+
+The client emits [`tracing`](https://docs.rs/tracing) events and wraps each
+`get_all` / `stream` / `execute` call in a span carrying the `query_id`, so
+logs correlate per query. Install any subscriber to see them, e.g.:
+
+```rust
+tracing_subscriber::fmt()
+    .with_env_filter("trino_rust_client=debug")
+    .init();
+```
+
 ## Example
 
 ### Basic example

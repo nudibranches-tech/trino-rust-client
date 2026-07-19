@@ -1,9 +1,9 @@
-use log::error;
-use log::info;
-use log::warn;
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct DockerCompose {
