@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 > Upgrading from 0.10.x? See the [migration guide](MIGRATION.md).
 
 ### Added
+- `Client::get_all`, `Client::get` and `Client::execute` now accept `impl Into<String>` for the SQL, so `&str` literals work without `.to_string()` (consistent with `Client::stream`). Existing `String` call sites are unaffected
 - `QueryError::kind()` returning a `#[non_exhaustive]` `TrinoErrorKind` enum, for ergonomic, discoverable matching on the common Trino error names (`TableNotFound`, `SchemaNotFound`, `SyntaxError`, …) without comparing raw strings; falls back to `TrinoErrorKind::Other`
 - `Client::stream` — lazily stream query rows page by page without buffering the whole result set in memory (Direct and Spooled protocols). Returns a `RowStream` that resolves the result columns up front (`RowStream::columns() -> &[Column]`), implements `futures::Stream`, is `Send`/`Unpin`, and best-effort cancels the query on the coordinator if dropped before completion
 
