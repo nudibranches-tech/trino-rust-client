@@ -177,6 +177,81 @@ async fn test_stream_empty_result_set() {
     assert_eq!(count, 0, "no rows for an empty result set");
 }
 
+// The streaming + spooling combination is the highest-value path (large
+// results). Exercise it end-to-end with inline segments (no object storage
+// needed): the stream must resolve the schema and decode spooled rows.
+#[cfg(feature = "spooling")]
+#[tokio::test]
+async fn test_stream_spooled_inline_segments() {
+    use trino_rust_client::Trino;
+
+    #[derive(Trino, Debug, serde::Deserialize, serde::Serialize)]
+    struct SpooledRecord {
+        id: i64,
+        name: String,
+    }
+
+    let (server, host, port) = make_mock_server().await;
+    let uri = server.uri();
+    let stats = read_fixture("query_result_finished")["stats"].clone();
+
+    mount(
+        &server,
+        "POST",
+        "",
+        json!({
+            "id": "s", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/s/1"),
+            "stats": stats.clone(), "warnings": []
+        }),
+    )
+    .await;
+    // Spooled page with two inline JSON segments: [{id:1,name:"alice"}], [{id:2,name:"bob"}]
+    mount(
+        &server,
+        "GET",
+        "/v1/statement/s/1",
+        json!({
+            "id": "s", "infoUri": format!("{uri}/ui"),
+            "columns": [
+                { "name": "id", "type": "bigint", "typeSignature": { "rawType": "bigint", "arguments": [] } },
+                { "name": "name", "type": "varchar", "typeSignature": { "rawType": "varchar", "arguments": [] } }
+            ],
+            "data": {
+                "encoding": "json",
+                "segments": [
+                    { "type": "inline", "data": "W1sxLCJhbGljZSJdXQ==", "metadata": {} },
+                    { "type": "inline", "data": "W1syLCJib2IiXV0=", "metadata": {} }
+                ]
+            },
+            "stats": stats, "warnings": []
+        }),
+    )
+    .await;
+
+    let cli = client(host, port);
+    let mut stream = cli
+        .stream::<SpooledRecord>("SELECT id, name FROM t")
+        .await
+        .expect("schema resolves for the spooled result");
+
+    assert_eq!(
+        stream.columns().len(),
+        2,
+        "spooled schema resolved up front"
+    );
+
+    let mut rows = Vec::new();
+    while let Some(item) = stream.next().await {
+        rows.push(item.expect("spooled row should decode"));
+    }
+    assert_eq!(rows.len(), 2, "two spooled rows streamed");
+    assert_eq!(rows[0].id, 1);
+    assert_eq!(rows[0].name, "alice");
+    assert_eq!(rows[1].id, 2);
+    assert_eq!(rows[1].name, "bob");
+}
+
 #[tokio::test]
 async fn test_stream_surfaces_mid_stream_error() {
     let (server, host, port) = make_mock_server().await;
