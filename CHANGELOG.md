@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Changed
 - The library now depends on `tokio` with only the `rt` and `sync` features instead of `full`, shrinking the dependency footprint and compile time for consumers (no longer pulls `fs`/`process`/`signal`/…). Tests and examples keep the fuller feature set via dev-dependencies
-- **Breaking:** Restructured the `Error` enum for consistent, matchable errors. A Trino query failure is now a single `Error::Query(Box<QueryError>)` carrying the full structured error — match on `error_code` / `error_name` / `error_type`. Both the query and execute code paths now map failures identically (and `error_code == 4` still maps to `Error::Forbidden`). Added typed `Error::Decode`, `Error::Tls` and `Error::Protocol` variants in place of many stringly `InternalError`s
+- **Breaking:** Restructured the `Error` enum for consistent, matchable errors. A Trino query failure is now a single `Error::Query(Box<QueryError>)` carrying the full structured error — match on `error_code` / `error_name` / `error_type`. Both the query and execute code paths now map failures identically (and `error_code == 4` still maps to `Error::Forbidden`). Added typed `Error::Decode`, `Error::Tls` and `Error::Protocol` variants in place of many stringly `InternalError`s. `Error` is now `#[non_exhaustive]` so future variants can be added without a breaking change
 - **Breaking:** Unified the two Trino error representations — removed `error::TrinoError`/`TrinoErrorLocation`; `TrinoRetryResult::error` is now `Option<models::QueryError>`, and `QueryError::failure_info` is now `Option<FailureInfo>`
 
 ### Removed

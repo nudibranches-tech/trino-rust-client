@@ -6,6 +6,7 @@ use thiserror::Error;
 use crate::models::QueryError;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
     #[error("duplicate header")]
     DuplicateHeader(HeaderName),
@@ -83,4 +84,46 @@ pub struct TrinoRetryResult {
 #[derive(Debug, Deserialize)]
 pub struct TrinoStats {
     pub state: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::QueryError;
+
+    fn query_error(error_code: i32, error_name: &str) -> QueryError {
+        QueryError {
+            message: "boom".into(),
+            sql_state: None,
+            error_code,
+            error_name: error_name.into(),
+            error_type: "USER_ERROR".into(),
+            error_location: None,
+            failure_info: None,
+        }
+    }
+
+    // Both the query and execute paths funnel Trino failures through
+    // `From<QueryError>`, so these two tests pin the single, shared mapping.
+
+    #[test]
+    fn permission_denied_maps_to_forbidden() {
+        // error_code 4 is Trino's PERMISSION_DENIED.
+        match Error::from(query_error(4, "PERMISSION_DENIED")) {
+            Error::Forbidden { message } => assert_eq!(message, "boom"),
+            other => panic!("expected Forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn other_failures_map_to_structured_query() {
+        match Error::from(query_error(1, "SYNTAX_ERROR")) {
+            Error::Query(q) => {
+                assert_eq!(q.error_name, "SYNTAX_ERROR");
+                assert_eq!(q.error_code, 1);
+                assert_eq!(q.error_type, "USER_ERROR");
+            }
+            other => panic!("expected Query, got {other:?}"),
+        }
+    }
 }
