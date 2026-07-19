@@ -73,7 +73,7 @@ async fn test_get_all_empty_result_set_row_type() {
         .unwrap();
 
     let result = client
-        .get_all::<Row>("SELECT a, b, c, d, e, f FROM t WHERE 1=0".to_string())
+        .get_all::<Row>("SELECT a, b, c, d, e, f FROM t WHERE 1=0")
         .await;
 
     assert!(
@@ -109,7 +109,7 @@ async fn test_get_all_empty_result_set_derived_type() {
         .unwrap();
 
     let result = client
-        .get_all::<Record>("SELECT a, b, c, d, f FROM t WHERE 1=0".to_string())
+        .get_all::<Record>("SELECT a, b, c, d, f FROM t WHERE 1=0")
         .await;
 
     assert!(

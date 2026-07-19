@@ -676,12 +676,12 @@ impl Client {
     }
 
     #[tracing::instrument(skip_all, fields(query_id = tracing::field::Empty))]
-    pub async fn get_all<T>(&self, sql: String) -> Result<DataSet<T>>
+    pub async fn get_all<T>(&self, sql: impl Into<String>) -> Result<DataSet<T>>
     where
         T: Trino + 'static,
         for<'de> T: serde::Deserialize<'de> + serde::Serialize,
     {
-        let res = self.get_retry(sql).await?;
+        let res = self.get_retry(sql.into()).await?;
         tracing::Span::current().record("query_id", res.id.as_str());
 
         // Store columns from responses (used for Direct protocol DataSet construction)
@@ -905,9 +905,9 @@ impl Client {
      * @return [`Result<ExecuteResult>`]` The result of the execution
      * */
     #[tracing::instrument(skip_all, fields(query_id = tracing::field::Empty))]
-    pub async fn execute(&self, sql: String) -> Result<ExecuteResult> {
+    pub async fn execute(&self, sql: impl Into<String>) -> Result<ExecuteResult> {
         // try the sql first
-        let res = self.get_retry::<Row>(sql).await?;
+        let res = self.get_retry::<Row>(sql.into()).await?;
         tracing::Span::current().record("query_id", res.id.as_str());
 
         let mut next = res.next_uri;
@@ -979,7 +979,7 @@ impl Client {
         result.retry(self.retry_policy()).when(need_retry).await
     }
 
-    pub async fn get<T>(&self, sql: String) -> Result<QueryResult<T>>
+    pub async fn get<T>(&self, sql: impl Into<String>) -> Result<QueryResult<T>>
     where
         T: Trino + 'static,
         for<'de> T: serde::Deserialize<'de>,
@@ -987,7 +987,7 @@ impl Client {
         let req = self
             .client
             .post(format!("{}v1/statement", self.url))
-            .body(sql);
+            .body(sql.into());
         let req = {
             let session = self.session.read().await;
             add_session_header(req, &session)
