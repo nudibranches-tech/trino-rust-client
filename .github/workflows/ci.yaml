@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest]
         rust: [stable, nightly]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install latest ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@master
@@ -38,3 +38,13 @@ jobs:
 
       - name: Run integration tests
         run: cargo test --package trino-integration-tests
+
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Keep this in sync with `rust-version` in Cargo.toml.
+      - uses: dtolnay/rust-toolchain@1.86.0
+      - name: Check on the MSRV toolchain
+        run: cargo check --all-features

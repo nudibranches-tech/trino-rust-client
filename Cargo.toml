@@ -57,6 +57,7 @@ license = {workspace = true}
 name = "trino-rust-client"
 readme = "README.md"
 repository = {workspace = true}
+rust-version = {workspace = true}
 version = {workspace = true}
 
 [package.metadata.docs.rs]
@@ -106,4 +107,5 @@ edition = "2021"
 homepage = "https://github.com/nudibranches-tech/trino-rust-client"
 license = "MIT"
 repository = "https://github.com/nudibranches-tech/trino-rust-client"
+rust-version = "1.86"
 version = "0.10.0"
