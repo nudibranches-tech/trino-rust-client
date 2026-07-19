@@ -21,7 +21,7 @@ impl Ssl {
         let buf = Self::read_file(&root_certificate_path)?;
         match reqwest::Certificate::from_pem(&buf) {
             Ok(cert) => Ok(Certificate(cert)),
-            Err(e) => Err(crate::error::Error::InternalError(format!(
+            Err(e) => Err(crate::error::Error::Tls(format!(
                 "Cannot load PEM certificate {:?}",
                 e
             ))),
@@ -32,7 +32,7 @@ impl Ssl {
         let buf = Self::read_file(&root_certificate_path)?;
         match reqwest::Certificate::from_der(&buf) {
             Ok(cert) => Ok(Certificate(cert)),
-            Err(e) => Err(crate::error::Error::InternalError(format!(
+            Err(e) => Err(crate::error::Error::Tls(format!(
                 "Cannot load DER certificate {:?}",
                 e
             ))),
@@ -43,7 +43,7 @@ impl Ssl {
         let mut buf = Vec::new();
         std::fs::File::open(file_path)
             .map_err(|e| {
-                crate::error::Error::InternalError(format!(
+                crate::error::Error::Tls(format!(
                     "Error opening file {}. {}",
                     file_path.as_ref().display(),
                     e
@@ -51,7 +51,7 @@ impl Ssl {
             })?
             .read_to_end(&mut buf)
             .map_err(|e| {
-                crate::error::Error::InternalError(format!(
+                crate::error::Error::Tls(format!(
                     "Error reading file {}. {}",
                     file_path.as_ref().display(),
                     e

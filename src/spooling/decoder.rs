@@ -18,7 +18,7 @@ pub fn decode_inline_segment(encoded_data: &str, encoding: &str) -> Result<Strin
 
     let compressed_data = BASE64_STANDARD
         .decode(encoded_data)
-        .map_err(|e| Error::InternalError(format!("Failed to base64 decode segment: {}", e)))?;
+        .map_err(|e| Error::Decode(format!("Failed to base64 decode segment: {}", e)))?;
 
     decompress_bytes_internal(&compressed_data, &encoding)
 }
@@ -33,7 +33,7 @@ fn decompress_bytes_internal(
     let decompressed_data = match encoding {
         SpoolingEncoding::JsonZstd => decompress_zstd(compressed_data).or_else(|e| {
             let fallback_result = String::from_utf8(compressed_data.to_vec()).map_err(|utf8_err| {
-                Error::InternalError(format!(
+                Error::Decode(format!(
                     "Failed to decompress zstd and plain JSON fallback also failed: {}, {}",
                     e, utf8_err
                 ))
@@ -42,14 +42,14 @@ fn decompress_bytes_internal(
         })?,
         SpoolingEncoding::JsonLz4 => decompress_lz4(compressed_data).or_else(|e| {
             String::from_utf8(compressed_data.to_vec()).map_err(|utf8_err| {
-                Error::InternalError(format!(
+                Error::Decode(format!(
                     "Failed to decompress lz4 and plain JSON fallback also failed: {}, {}",
                     e, utf8_err
                 ))
             })
         })?,
         SpoolingEncoding::Json => String::from_utf8(compressed_data.to_vec()).map_err(|e| {
-            Error::InternalError(format!(
+            Error::Decode(format!(
                 "Failed to convert uncompressed data to UTF-8: {}",
                 e
             ))
@@ -74,7 +74,7 @@ fn decompress_zstd(compressed_data: &[u8]) -> Result<String, Error> {
     let mut decompressed = String::new();
     match decoder.read_to_string(&mut decompressed) {
         Ok(_) => Ok(decompressed),
-        Err(e) => Err(Error::InternalError(format!(
+        Err(e) => Err(Error::Decode(format!(
             "Failed to decompress zstd data: {}",
             e
         ))),
@@ -89,7 +89,7 @@ fn decompress_lz4(compressed_data: &[u8]) -> Result<String, Error> {
     let mut decompressed = String::new();
     decoder
         .read_to_string(&mut decompressed)
-        .map_err(|e| Error::InternalError(format!("Failed to decompress lz4 data: {}", e)))?;
+        .map_err(|e| Error::Decode(format!("Failed to decompress lz4 data: {}", e)))?;
 
     Ok(decompressed)
 }

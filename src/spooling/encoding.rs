@@ -39,7 +39,7 @@ impl TryFrom<&str> for SpoolingEncoding {
             "json" => Ok(SpoolingEncoding::Json),
             "json+zstd" => Ok(SpoolingEncoding::JsonZstd),
             "json+lz4" => Ok(SpoolingEncoding::JsonLz4),
-            _ => Err(Error::InternalError(format!(
+            _ => Err(Error::Decode(format!(
                 "Unsupported spooling encoding: {}. Supported values: json, json+zstd, json+lz4",
                 s
             ))),

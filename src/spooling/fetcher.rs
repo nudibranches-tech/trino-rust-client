@@ -98,7 +98,7 @@ impl SegmentFetcher {
     async fn fetch_inline_segment(&self, data: &str) -> Result<Vec<u8>> {
         general_purpose::STANDARD
             .decode(data)
-            .map_err(|e| Error::InternalError(format!("Base64 decode failed: {}", e)))
+            .map_err(|e| Error::Decode(format!("Base64 decode failed: {}", e)))
     }
 
     // Fetch a spooled segment (official Trino format)
@@ -231,7 +231,7 @@ fn decompress_gzip(compressed_data: &[u8]) -> Result<Vec<u8>> {
 
     decoder
         .read_to_end(&mut decompressed)
-        .map_err(|e| Error::InternalError(format!("Failed to decompress gzip data: {}", e)))?;
+        .map_err(|e| Error::Decode(format!("Failed to decompress gzip data: {}", e)))?;
 
     Ok(decompressed)
 }
