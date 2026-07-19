@@ -206,7 +206,8 @@ async fn test_stream_spooled_inline_segments() {
         }),
     )
     .await;
-    // Spooled page with two inline JSON segments: [{id:1,name:"alice"}], [{id:2,name:"bob"}]
+    // Spooled page with two inline JSON segments in Trino's native row-array
+    // format: [[1,"alice"]] and [[2,"bob"]] (base64-encoded).
     mount(
         &server,
         "GET",
