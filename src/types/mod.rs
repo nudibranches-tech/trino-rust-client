@@ -16,6 +16,7 @@ mod seq;
 mod string;
 mod util;
 pub mod uuid;
+mod var_binary;
 
 pub use self::uuid::*;
 pub use boolean::*;
@@ -33,6 +34,7 @@ pub use option::*;
 pub use row::*;
 pub use seq::*;
 pub use string::*;
+pub use var_binary::*;
 
 //mod str;
 //pub use self::str::*;
@@ -57,6 +59,8 @@ pub enum Error {
     InvalidTrinoType,
     InvalidColumn,
     InvalidTypeSignature,
+    #[display("unsupported Trino type: {_0}")]
+    UnsupportedType(String),
     ParseDecimalFailed(String),
     ParseIntervalMonthFailed,
     ParseIntervalDayFailed,
@@ -168,14 +172,14 @@ fn extract(target: &TrinoTy, provided: &TrinoTy) -> Result<Vec<(usize, Vec<usize
         (IpAddress, IpAddress) => Ok(vec![]),
         (Uuid, Uuid) => Ok(vec![]),
         (Json, Json) => Ok(vec![]),
+        (VarBinary, VarBinary) => Ok(vec![]),
         _ => Err(Error::InvalidTrinoType),
     }
 }
 
-// TODO:
-// * VarBinary Json
-// * TimestampWithTimeZone TimeWithTimeZone
-// * HyperLogLog P4HyperLogLog
+// Not yet decodable into a Rust type (these produce `Error::UnsupportedType`):
+// * TimeWithTimeZone
+// * HyperLogLog / P4HyperLogLog
 // * QDigest
 // * Geometry (Trino 482 added support alongside with Iceberg v3 tables)
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -201,6 +205,7 @@ pub enum TrinoTy {
     Decimal(usize, usize),
     IpAddress,
     Json,
+    VarBinary,
     Unknown,
 }
 
@@ -313,7 +318,8 @@ impl TrinoTy {
             RawTrinoTy::IpAddress => TrinoTy::IpAddress,
             RawTrinoTy::Uuid => TrinoTy::Uuid,
             RawTrinoTy::Json => TrinoTy::Json,
-            _ => return Err(Error::InvalidTypeSignature),
+            RawTrinoTy::VarBinary => TrinoTy::VarBinary,
+            other => return Err(Error::UnsupportedType(other.to_str().to_string())),
         };
 
         Ok(ty)
@@ -380,6 +386,7 @@ impl TrinoTy {
             IpAddress => vec![],
             Uuid => vec![],
             Json => vec![],
+            VarBinary => vec![],
         };
 
         TypeSignature::new(raw_ty, params)
@@ -428,6 +435,7 @@ impl TrinoTy {
             IpAddress => RawTrinoTy::IpAddress.to_str().into(),
             Uuid => RawTrinoTy::Uuid.to_str().into(),
             Json => RawTrinoTy::Json.to_str().into(),
+            VarBinary => RawTrinoTy::VarBinary.to_str().into(),
         }
     }
 
@@ -457,6 +465,7 @@ impl TrinoTy {
             IpAddress => RawTrinoTy::IpAddress,
             Uuid => RawTrinoTy::Uuid,
             Json => RawTrinoTy::Json,
+            VarBinary => RawTrinoTy::VarBinary,
         }
     }
 }

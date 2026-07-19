@@ -1,7 +1,7 @@
 [dependencies]
 async-stream = {workspace = true}
 backon = {workspace = true}
-base64 = {workspace = true, optional = true}
+base64 = {workspace = true}
 bigdecimal = {workspace = true}
 chrono = {workspace = true}
 chrono-tz = {workspace = true}
@@ -44,7 +44,7 @@ required-features = ["spooling"]
 
 [features]
 default = []
-spooling = ["dep:base64", "dep:zstd", "dep:lz4", "dep:flate2"]
+spooling = ["dep:zstd", "dep:lz4", "dep:flate2"]
 
 [package]
 authors = {workspace = true}
