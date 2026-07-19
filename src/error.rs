@@ -22,9 +22,10 @@ pub enum Error {
     HttpNotOk(StatusCode, String),
     /// A query failed on the Trino coordinator. Match on the inner
     /// [`QueryError`]'s `error_code` / `error_name` / `error_type` to react to
-    /// a specific failure.
-    #[error("query error: {0}")]
-    Query(Box<QueryError>),
+    /// a specific failure; the full structured error is also reachable through
+    /// [`std::error::Error::source`].
+    #[error("query error [{}]: {}", .0.error_name, .0.message)]
+    Query(#[source] Box<QueryError>),
     /// Failed to decode or deserialize a response or a spooled segment.
     #[error("decode error: {0}")]
     Decode(String),
@@ -125,5 +126,18 @@ mod tests {
             }
             other => panic!("expected Query, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn query_error_preserves_source_chain() {
+        use std::error::Error as _;
+
+        let err = Error::from(query_error(1, "SYNTAX_ERROR"));
+        // Top-level Display stays concise (no failure_info dump)...
+        assert_eq!(err.to_string(), "query error [SYNTAX_ERROR]: boom");
+        // ...while the underlying error is reachable via the source chain, so
+        // generic tooling (anyhow / eyre / tracing) can surface the cause.
+        let source = err.source().expect("Query should expose a source");
+        assert!(source.to_string().contains("boom"));
     }
 }
