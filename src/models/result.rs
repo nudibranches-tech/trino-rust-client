@@ -65,7 +65,7 @@ impl SpooledData {
                 Segment::Inlined { data, .. } => {
                     let decompressed = decode_inline_segment(data, &self.encoding)?;
                     let rows: Vec<T> = serde_json::from_str(&decompressed).map_err(|e| {
-                        Error::InternalError(format!("Failed to parse segment {} JSON: {}", idx, e))
+                        Error::Decode(format!("Failed to parse segment {} JSON: {}", idx, e))
                     })?;
                     all_rows.reserve(rows.len());
                     for row in rows {
@@ -73,7 +73,7 @@ impl SpooledData {
                     }
                 }
                 Segment::Spooled { .. } => {
-                    return Err(Error::InternalError(
+                    return Err(Error::Protocol(
                         "Remote spooled segments not supported in this code path. Use Client::get_all() instead.".to_string(),
                     ));
                 }

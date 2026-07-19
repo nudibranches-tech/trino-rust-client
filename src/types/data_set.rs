@@ -77,7 +77,7 @@ pub fn build_dataset<T: Trino + 'static>(
         TrinoTy::Unknown => {
             // Row type: columns are required since T::ty() returns Unknown
             let cols = columns.ok_or_else(|| {
-                crate::error::Error::InternalError("No columns available for Row type".to_string())
+                crate::error::Error::Protocol("No columns available for Row type".to_string())
             })?;
 
             // Convert columns to types - move columns instead of cloning
@@ -86,11 +86,11 @@ pub fn build_dataset<T: Trino + 'static>(
                 .map(TrinoTy::from_column)
                 .collect::<std::result::Result<Vec<_>, _>>()
                 .map_err(|e| {
-                    crate::error::Error::InternalError(format!("Failed to convert columns: {}", e))
+                    crate::error::Error::Decode(format!("Failed to convert columns: {}", e))
                 })?;
 
             if types.is_empty() {
-                return Err(crate::error::Error::InternalError(
+                return Err(crate::error::Error::Protocol(
                     "Empty columns for Row type".to_string(),
                 ));
             }
@@ -103,7 +103,7 @@ pub fn build_dataset<T: Trino + 'static>(
             // Non-Row types: use DataSet::new which infers types from T::ty()
             // This works for all types that have a known TrinoTy (not Unknown)
             DataSet::new(rows).map_err(|e| {
-                crate::error::Error::InternalError(format!("Failed to create DataSet: {}", e))
+                crate::error::Error::Decode(format!("Failed to create DataSet: {}", e))
             })
         }
     }

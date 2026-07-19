@@ -20,7 +20,6 @@ use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
 use crate::models::Column;
-use crate::models::QueryError;
 use crate::models::QueryResultData;
 #[cfg(feature = "spooling")]
 use crate::models::SpooledData;
@@ -460,21 +459,6 @@ fn need_retry(e: &Error) -> bool {
     }
 }
 
-/// Map a per-page Trino error (carried in `QueryResult::error`) to a client [`Error`].
-fn map_page_error(error: QueryError) -> Error {
-    // error_code 4 is Trino's PERMISSION_DENIED
-    if error.error_code == 4 {
-        Error::Forbidden {
-            message: error.message,
-        }
-    } else {
-        Error::InternalError(format!(
-            "Query failed with {} (error code {}): {}",
-            error.error_name, error.error_code, error.message
-        ))
-    }
-}
-
 /// Everything needed to fire a best-effort query cancellation from
 /// [`RowStream`]'s `Drop`, without borrowing the [`Client`].
 struct CancelOnDrop {
@@ -600,7 +584,7 @@ impl Client {
         let mut res = self.get_retry::<T>(sql).await?;
         loop {
             if let Some(error) = res.error.take() {
-                return Err(map_page_error(error));
+                return Err(error.into());
             }
             if res.columns.is_some() || res.data.is_some() {
                 break;
@@ -631,7 +615,7 @@ impl Client {
 
             loop {
                 if let Some(error) = res.error.take() {
-                    Err(map_page_error(error))?;
+                    Err(Error::from(error))?;
                 }
 
                 #[cfg(feature = "spooling")]
@@ -656,7 +640,7 @@ impl Client {
                         }
                         #[cfg(not(feature = "spooling"))]
                         QueryResultData::Spooled(_) => {
-                            Err(Error::InternalError(
+                            Err(Error::Protocol(
                                 "Server sent spooled data but 'spooling' feature is not enabled. \
                                  Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
                             ))?;
@@ -706,16 +690,7 @@ impl Client {
                     }
 
                     if let Some(error) = res.error {
-                        if error.error_code == 4 {
-                            return Err(Error::Forbidden {
-                                message: error.message,
-                            });
-                        } else {
-                            return Err(Error::InternalError(format!(
-                                "Query failed with {} (error code {}): {}",
-                                error.error_name, error.error_code, error.message
-                            )));
-                        }
+                        return Err(error.into());
                     }
 
                     if let Some(data) = res.data {
@@ -725,13 +700,13 @@ impl Client {
                             }
                             #[cfg(feature = "spooling")]
                             QueryResultData::Spooled(_) => {
-                                return Err(Error::InternalError(
+                                return Err(Error::Protocol(
                                     "Cannot mix Direct and Spooled protocols in same query".to_string(),
                                 ));
                             }
                             #[cfg(not(feature = "spooling"))]
                             QueryResultData::Spooled(_) => {
-                                return Err(Error::InternalError(
+                                return Err(Error::Protocol(
                                     "Server sent spooled data but 'spooling' feature is not enabled. \
                                      Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
                                 ));
@@ -758,22 +733,13 @@ impl Client {
                     }
 
                     if let Some(error) = res.error {
-                        if error.error_code == 4 {
-                            return Err(Error::Forbidden {
-                                message: error.message,
-                            });
-                        } else {
-                            return Err(Error::InternalError(format!(
-                                "Query failed with {} (error code {}): {}",
-                                error.error_name, error.error_code, error.message
-                            )));
-                        }
+                        return Err(error.into());
                     }
 
                     if let Some(data) = res.data {
                         match data {
                             QueryResultData::Direct(_) => {
-                                return Err(Error::InternalError(
+                                return Err(Error::Protocol(
                                     "Cannot mix Direct and Spooled protocols in same query".to_string(),
                                 ));
                             }
@@ -793,7 +759,7 @@ impl Client {
             }
             #[cfg(not(feature = "spooling"))]
             Some(QueryResultData::Spooled(_)) => {
-                Err(Error::InternalError(
+                Err(Error::Protocol(
                     "Server sent spooled data but 'spooling' feature is not enabled. \
                      Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
                 ))
@@ -815,16 +781,7 @@ impl Client {
                     }
 
                     if let Some(error) = res.error {
-                        if error.error_code == 4 {
-                            return Err(Error::Forbidden {
-                                message: error.message,
-                            });
-                        } else {
-                            return Err(Error::InternalError(format!(
-                                "Query failed with {} (error code {}): {}",
-                                error.error_name, error.error_code, error.message
-                            )));
-                        }
+                        return Err(error.into());
                     }
 
                     if let Some(data) = res.data {
@@ -851,7 +808,7 @@ impl Client {
                             }
                             #[cfg(not(feature = "spooling"))]
                             QueryResultData::Spooled(_) => {
-                                return Err(Error::InternalError(
+                                return Err(Error::Protocol(
                                     "Server sent spooled data but 'spooling' feature is not enabled. \
                                      Add features = [\"spooling\"] to your trino-rust-client dependency in Cargo.toml.".to_string(),
                                 ));
@@ -896,13 +853,13 @@ impl Client {
         columns: Option<Vec<crate::models::Column>>,
     ) -> Result<DataSet<T>> {
         let cols = columns.ok_or_else(|| {
-            Error::InternalError("Column metadata required for spooling protocol".to_string())
+            Error::Protocol("Column metadata required for spooling protocol".to_string())
         })?;
 
         let mut all_rows: Vec<Vec<serde_json::Value>> = Vec::new();
 
         let encoding = SpoolingEncoding::try_from(encoding).map_err(|e| {
-            Error::InternalError(format!(
+            Error::Decode(format!(
                 "Failed to parse encoding: {}. Only 'json' based formats are supported.",
                 e
             ))
@@ -911,10 +868,8 @@ impl Client {
         for bytes in segment_bytes {
             let json_str = decompress_segment_bytes(&bytes, &encoding)?;
 
-            let mut rows: Vec<Vec<serde_json::Value>> =
-                serde_json::from_str(&json_str).map_err(|e| {
-                    Error::InternalError(format!("Failed to parse segment JSON: {}", e))
-                })?;
+            let mut rows: Vec<Vec<serde_json::Value>> = serde_json::from_str(&json_str)
+                .map_err(|e| Error::Decode(format!("Failed to parse segment JSON: {}", e)))?;
 
             all_rows.append(&mut rows);
         }
@@ -925,14 +880,14 @@ impl Client {
         });
 
         let dataset: DataSet<T> = serde_json::from_value(json_obj)
-            .map_err(|e| Error::InternalError(format!("Failed to deserialize DataSet: {}", e)))?;
+            .map_err(|e| Error::Decode(format!("Failed to deserialize DataSet: {}", e)))?;
 
         Ok(dataset)
     }
 
     /**
      * Execute a SQL statement and return the result.
-     * If the TRINO query returns an error, the method returns an error of type `Error::TrinoError`
+     * If the TRINO query returns an error, the method returns an error of type `Error::Query`
      * @param sql The SQL statement to execute
      * @return [`Result<ExecuteResult>`]` The result of the execution
      * */
@@ -1028,7 +983,7 @@ impl Client {
             let text = resp.text().await?;
 
             let data: QueryResult<T> = serde_json::from_str(&text)
-                .map_err(|e| Error::InternalError(format!("Failed to parse response: {}", e)))?;
+                .map_err(|e| Error::Decode(format!("Failed to parse response: {}", e)))?;
             Ok(data)
         })
         .await
@@ -1049,7 +1004,7 @@ impl Client {
         self.send(req, StatusCode::OK, |resp| async {
             let text = resp.text().await?;
             let data: QueryResult<T> = serde_json::from_str(&text)
-                .map_err(|e| Error::InternalError(format!("Failed to parse response: {}", e)))?;
+                .map_err(|e| Error::Decode(format!("Failed to parse response: {}", e)))?;
             Ok(data)
         })
         .await

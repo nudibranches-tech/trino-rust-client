@@ -301,18 +301,27 @@ async fn test_stream_surfaces_mid_stream_error() {
         .expect("schema resolves before the failing page");
 
     let mut oks = 0;
-    let mut saw_error = false;
+    let mut err = None;
     while let Some(item) = stream.next().await {
         match item {
             Ok(_) => oks += 1,
-            Err(_) => {
-                saw_error = true;
+            Err(e) => {
+                err = Some(e);
                 break;
             }
         }
     }
     assert_eq!(oks, 2, "two rows should stream before the error");
-    assert!(saw_error, "the failing page must surface as an Err item");
+
+    // The failure must surface as a structured Error::Query the caller can
+    // inspect (error_name / error_code), not an opaque string.
+    match err.expect("the failing page must surface as an Err item") {
+        trino_rust_client::error::Error::Query(q) => {
+            assert_eq!(q.error_name, "SYNTAX_ERROR");
+            assert_eq!(q.error_code, 1);
+        }
+        other => panic!("expected Error::Query, got {other:?}"),
+    }
 }
 
 // Dropping a RowStream before the query finishes must best-effort cancel the

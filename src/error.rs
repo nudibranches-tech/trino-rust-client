@@ -6,29 +6,8 @@ use thiserror::Error;
 use crate::models::QueryError;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("invalid catalog")]
-    InvalidCatalog,
-    #[error("catalog not found")]
-    CatalogNotFound,
-    #[error("invalid schema")]
-    InvalidSchema,
-    #[error("schema not found")]
-    SchemaNotFound,
-    #[error("schema already exists")]
-    SchemaAlreadyExists,
-    #[error("invalid source")]
-    InvalidSource,
-    #[error("invalid user")]
-    InvalidUser,
-    #[error("invalid properties")]
-    InvalidProperties,
-    #[error("invalid table property: {0}")]
-    InvalidTableProperty(String),
-    #[error("table not found")]
-    TableNotFound,
-    #[error("table already exists")]
-    TableAlreadyExists,
     #[error("duplicate header")]
     DuplicateHeader(HeaderName),
     #[error("invalid empty auth")]
@@ -41,16 +20,30 @@ pub enum Error {
     HttpError(#[source] Box<reqwest::Error>),
     #[error("http not ok, code: {0}, reason: {1}")]
     HttpNotOk(StatusCode, String),
-    #[error("query error, reason: {0}")]
-    QueryError(Box<QueryError>),
+    /// A query failed on the Trino coordinator. Match on the inner
+    /// [`QueryError`]'s `error_code` / `error_name` / `error_type` to react to
+    /// a specific failure; the full structured error is also reachable through
+    /// [`std::error::Error::source`].
+    #[error("query error [{}]: {}", .0.error_name, .0.message)]
+    Query(#[source] Box<QueryError>),
+    /// Failed to decode or deserialize a response or a spooled segment.
+    #[error("decode error: {0}")]
+    Decode(String),
+    /// Failed to load or read a TLS certificate.
+    #[error("tls error: {0}")]
+    Tls(String),
+    /// The server used a protocol the client cannot handle in this context
+    /// (e.g. mixing the Direct and Spooled protocols across pages, or spooled
+    /// data received without the `spooling` feature enabled).
+    #[error("protocol error: {0}")]
+    Protocol(String),
     #[error("inconsistent data")]
     InconsistentData,
-    #[error("empty data")]
-    EmptyData,
     #[error("reach max attempt: {0}")]
     ReachMaxAttempt(usize),
     #[error("invalid host: {0}")]
     InvalidHost(String),
+    /// An unexpected, internal failure that callers are not expected to handle.
     #[error("internal error: {0}")]
     InternalError(String),
 }
@@ -63,7 +56,14 @@ impl From<reqwest::Error> for Error {
 
 impl From<QueryError> for Error {
     fn from(err: QueryError) -> Self {
-        Error::QueryError(Box::new(err))
+        // error_code 4 is Trino's PERMISSION_DENIED.
+        if err.error_code == 4 {
+            Error::Forbidden {
+                message: err.message,
+            }
+        } else {
+            Error::Query(Box::new(err))
+        }
     }
 }
 
@@ -75,7 +75,7 @@ pub struct TrinoRetryResult {
     #[serde(rename = "infoUri")]
     pub info_uri: String,
     pub stats: TrinoStats,
-    pub error: Option<TrinoError>,
+    pub error: Option<QueryError>,
     #[serde(rename = "updateType")]
     pub update_type: Option<String>,
     #[serde(rename = "updateCount")]
@@ -87,49 +87,57 @@ pub struct TrinoStats {
     pub state: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct TrinoError {
-    pub message: String,
-    #[serde(rename = "errorCode")]
-    pub error_code: i64,
-    #[serde(rename = "errorName")]
-    pub error_name: String,
-    #[serde(rename = "errorType")]
-    pub error_type: String,
-    #[serde(rename = "errorLocation")]
-    pub error_location: Option<TrinoErrorLocation>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::QueryError;
 
-#[derive(Debug, Deserialize)]
-pub struct TrinoErrorLocation {
-    #[serde(rename = "lineNumber")]
-    pub line_number: i64,
-    #[serde(rename = "columnNumber")]
-    pub column_number: i64,
-}
-
-impl From<TrinoError> for Error {
-    fn from(error: TrinoError) -> Self {
-        match error.error_name.as_str() {
-            // CATALOG ERRORS
-            "CATALOG_NOT_FOUND" => Error::CatalogNotFound,
-            "MISSING_CATALOG_NAME" => Error::InvalidCatalog,
-
-            // SCHEMA ERRORS
-            "SCHEMA_NOT_FOUND" => Error::SchemaNotFound,
-            "MISSING_SCHEMA_NAME" => Error::InvalidSchema,
-            "SCHEMA_ALREADY_EXISTS" => Error::SchemaAlreadyExists,
-
-            // TABLE ERRORS
-            "INVALID_TABLE_PROPERTY" => Error::InvalidTableProperty(error.message),
-            "TABLE_NOT_FOUND" => Error::TableNotFound,
-            "TABLE_ALREADY_EXISTS" => Error::TableAlreadyExists,
-
-            // OTHER ERRORS
-            _ => Error::InternalError(format!(
-                "Trino error: {} - {}",
-                error.error_name, error.message
-            )),
+    fn query_error(error_code: i32, error_name: &str) -> QueryError {
+        QueryError {
+            message: "boom".into(),
+            sql_state: None,
+            error_code,
+            error_name: error_name.into(),
+            error_type: "USER_ERROR".into(),
+            error_location: None,
+            failure_info: None,
         }
+    }
+
+    // Both the query and execute paths funnel Trino failures through
+    // `From<QueryError>`, so these two tests pin the single, shared mapping.
+
+    #[test]
+    fn permission_denied_maps_to_forbidden() {
+        // error_code 4 is Trino's PERMISSION_DENIED.
+        match Error::from(query_error(4, "PERMISSION_DENIED")) {
+            Error::Forbidden { message } => assert_eq!(message, "boom"),
+            other => panic!("expected Forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn other_failures_map_to_structured_query() {
+        match Error::from(query_error(1, "SYNTAX_ERROR")) {
+            Error::Query(q) => {
+                assert_eq!(q.error_name, "SYNTAX_ERROR");
+                assert_eq!(q.error_code, 1);
+                assert_eq!(q.error_type, "USER_ERROR");
+            }
+            other => panic!("expected Query, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn query_error_preserves_source_chain() {
+        use std::error::Error as _;
+
+        let err = Error::from(query_error(1, "SYNTAX_ERROR"));
+        // Top-level Display stays concise (no failure_info dump)...
+        assert_eq!(err.to_string(), "query error [SYNTAX_ERROR]: boom");
+        // ...while the underlying error is reachable via the source chain, so
+        // generic tooling (anyhow / eyre / tracing) can surface the cause.
+        let source = err.source().expect("Query should expose a source");
+        assert!(source.to_string().contains("boom"));
     }
 }
