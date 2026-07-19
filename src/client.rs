@@ -37,6 +37,13 @@ use crate::{DataSet, QueryResult, Row, Trino};
 // allow_redirects
 // proxies
 
+/// A configured Trino client.
+///
+/// Created with [`ClientBuilder`]. Cheap to share: it wraps a connection-pooled
+/// HTTP client, so build one and reuse it for all queries. The main entry
+/// points are [`get_all`](Client::get_all) (buffer the result),
+/// [`stream`](Client::stream) (stream it lazily) and [`execute`](Client::execute)
+/// (run a statement).
 pub struct Client {
     client: reqwest::Client,
     session: RwLock<Session>,
@@ -47,6 +54,22 @@ pub struct Client {
     segment_fetcher: SegmentFetcher,
 }
 
+/// Builder for a [`Client`].
+///
+/// Start with [`ClientBuilder::new`], chain the setters you need, then call
+/// [`build`](ClientBuilder::build).
+///
+/// ```no_run
+/// # use trino_rust_client::client::ClientBuilder;
+/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = ClientBuilder::new("user", "trino.example.com")
+///     .port(8443)
+///     .secure(true)
+///     .catalog("hive")
+///     .schema("default")
+///     .build()?;
+/// # Ok(()) }
+/// ```
 pub struct ClientBuilder {
     session: SessionBuilder,
     auth: Option<Auth>,
@@ -60,14 +83,22 @@ pub struct ClientBuilder {
     max_concurrent_segments: Option<usize>,
 }
 
+/// Outcome of a statement run with [`Client::execute`].
 #[derive(Debug)]
 pub struct ExecuteResult {
+    /// URI of the output, when the statement produces one.
     pub output_uri: Option<String>,
+    /// The kind of update (e.g. `INSERT`, `CREATE TABLE`), if reported.
     pub update_type: Option<String>,
+    /// Number of rows affected, if reported.
     pub update_count: Option<u64>,
 }
 
 impl ClientBuilder {
+    /// Start building a client for the given Trino `user` and `host`.
+    ///
+    /// Defaults: port 8080, plain HTTP, no authentication. Use the setters to
+    /// change them, then call [`build`](ClientBuilder::build).
     pub fn new(user: impl ToString, host: impl ToString) -> Self {
         let builder = SessionBuilder::new(user, host);
         Self {
@@ -675,6 +706,11 @@ impl Client {
         })
     }
 
+    /// Run `sql` and return the whole result set as a [`DataSet`].
+    ///
+    /// The entire result is buffered in memory — for large results prefer
+    /// [`stream`](Client::stream). `T` is a `#[derive(Trino)]` row struct, or
+    /// [`Row`] for a dynamically-typed result.
     #[tracing::instrument(skip_all, fields(query_id = tracing::field::Empty))]
     pub async fn get_all<T>(&self, sql: impl Into<String>) -> Result<DataSet<T>>
     where
@@ -979,6 +1015,12 @@ impl Client {
         result.retry(self.retry_policy()).when(need_retry).await
     }
 
+    /// Submit `sql` and return the first result page.
+    ///
+    /// Low-level building block: the returned [`QueryResult`] may carry a
+    /// `next_uri` that you must follow with [`get_next`](Client::get_next) to
+    /// retrieve the rest. Most callers should use [`get_all`](Client::get_all)
+    /// or [`stream`](Client::stream), which handle pagination.
     pub async fn get<T>(&self, sql: impl Into<String>) -> Result<QueryResult<T>>
     where
         T: Trino + 'static,
@@ -1004,6 +1046,8 @@ impl Client {
         .await
     }
 
+    /// Fetch the next result page from a `next_uri` returned by a previous
+    /// [`get`](Client::get) / `get_next` call.
     pub async fn get_next<T>(&self, url: &str) -> Result<QueryResult<T>>
     where
         T: Trino + 'static,
@@ -1025,6 +1069,8 @@ impl Client {
         .await
     }
 
+    /// Cancel a running query by its id, releasing its resources on the
+    /// coordinator.
     pub async fn cancel(&self, query_id: &str) -> Result<()> {
         let url = format!("{}v1/query/{}", self.url, query_id);
         let req = self.client.delete(url);

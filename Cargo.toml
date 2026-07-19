@@ -59,6 +59,10 @@ readme = "README.md"
 repository = {workspace = true}
 version = {workspace = true}
 
+[package.metadata.docs.rs]
+# Build docs on docs.rs with every feature so the spooling API is included.
+all-features = true
+
 [[test]]
 name = "spooling_protocol"
 path = "tests/spooling_protocol.rs"
