@@ -15,6 +15,70 @@ pub struct QueryError {
     pub failure_info: Option<FailureInfo>,
 }
 
+/// A typed classification of the common Trino error names, so callers can
+/// match on well-known failures without comparing raw strings.
+///
+/// This intentionally covers only frequent cases; anything else is
+/// [`TrinoErrorKind::Other`] — use [`QueryError::error_name`] /
+/// [`QueryError::error_code`] for the full Trino error taxonomy.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrinoErrorKind {
+    SyntaxError,
+    PermissionDenied,
+    UserCanceled,
+    CatalogNotFound,
+    SchemaNotFound,
+    SchemaAlreadyExists,
+    TableNotFound,
+    TableAlreadyExists,
+    ColumnNotFound,
+    ColumnAlreadyExists,
+    FunctionNotFound,
+    NotSupported,
+    /// Any other Trino error — inspect the raw `error_name` / `error_code`.
+    Other,
+}
+
+impl TrinoErrorKind {
+    fn from_name(error_name: &str) -> Self {
+        match error_name {
+            "SYNTAX_ERROR" => Self::SyntaxError,
+            "PERMISSION_DENIED" => Self::PermissionDenied,
+            "USER_CANCELED" => Self::UserCanceled,
+            "CATALOG_NOT_FOUND" => Self::CatalogNotFound,
+            "SCHEMA_NOT_FOUND" => Self::SchemaNotFound,
+            "SCHEMA_ALREADY_EXISTS" => Self::SchemaAlreadyExists,
+            "TABLE_NOT_FOUND" => Self::TableNotFound,
+            "TABLE_ALREADY_EXISTS" => Self::TableAlreadyExists,
+            "COLUMN_NOT_FOUND" => Self::ColumnNotFound,
+            "COLUMN_ALREADY_EXISTS" => Self::ColumnAlreadyExists,
+            "FUNCTION_NOT_FOUND" => Self::FunctionNotFound,
+            "NOT_SUPPORTED" => Self::NotSupported,
+            _ => Self::Other,
+        }
+    }
+}
+
+impl QueryError {
+    /// Classify this failure into a [`TrinoErrorKind`] for ergonomic matching
+    /// on the common Trino error names.
+    ///
+    /// ```
+    /// # use trino_rust_client::models::{QueryError, TrinoErrorKind};
+    /// # fn handle(err: &QueryError) {
+    /// match err.kind() {
+    ///     TrinoErrorKind::TableNotFound => { /* create it, retry, … */ }
+    ///     TrinoErrorKind::SyntaxError => { /* report err.message */ }
+    ///     _ => { /* fall back to err.error_name / err.error_code */ }
+    /// }
+    /// # }
+    /// ```
+    pub fn kind(&self) -> TrinoErrorKind {
+        TrinoErrorKind::from_name(&self.error_name)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorLocation {
@@ -106,5 +170,22 @@ mod tests {
         };
 
         println!("{}", failure);
+    }
+
+    #[test]
+    fn test_error_kind() {
+        let mut err = QueryError {
+            message: "boom".into(),
+            sql_state: None,
+            error_code: 44,
+            error_name: "TABLE_NOT_FOUND".into(),
+            error_type: "USER_ERROR".into(),
+            error_location: None,
+            failure_info: None,
+        };
+        assert_eq!(err.kind(), TrinoErrorKind::TableNotFound);
+
+        err.error_name = "SOME_FUTURE_TRINO_ERROR".into();
+        assert_eq!(err.kind(), TrinoErrorKind::Other);
     }
 }
