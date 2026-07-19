@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use backon::ExponentialBuilder;
 use backon::Retryable;
@@ -12,7 +13,6 @@ use log::*;
 use reqwest::header::HeaderValue;
 use reqwest::{RequestBuilder, Response, Url};
 use tokio::sync::RwLock;
-use tokio::time::Duration;
 
 use crate::auth::Auth;
 use crate::build_dataset;
