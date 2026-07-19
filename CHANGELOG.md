@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 - `Client::stream` — lazily stream query rows page by page without buffering the whole result set in memory (Direct and Spooled protocols). Returns a `RowStream` that resolves the result columns up front (`RowStream::columns() -> &[Column]`), implements `futures::Stream`, is `Send`/`Unpin`, and best-effort cancels the query on the coordinator if dropped before completion
 
 ### Changed
+- Declared a minimum supported Rust version (MSRV) of **1.86** and added a CI job that enforces it
 - Unsupported Trino column types now fail with `Error::UnsupportedType` naming the type (e.g. `unsupported Trino type: HyperLogLog`) instead of a generic error
 - Switched logging from the `log` crate to [`tracing`](https://docs.rs/tracing): the same events are now emitted via `tracing`, and `get_all` / `stream` / `execute` are wrapped in a span carrying the `query_id` for per-query correlation. Install a `tracing` subscriber to see them
 - The library now depends on `tokio` with only the `rt` and `sync` features instead of `full`, shrinking the dependency footprint and compile time for consumers (no longer pulls `fs`/`process`/`signal`/…). Tests and examples keep the fuller feature set via dev-dependencies
@@ -107,12 +108,12 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [0.1.0] - 2020-10-01
 - Initial release
 
-[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.10.0...HEAD
-[0.10.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.3...v0.10.0
-[0.9.3]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.2...v0.9.3
-[0.9.2]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.9.1...v0.9.2
-[0.9.1]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.8.0...v0.9.1
-[0.8.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/v0.5.1...v0.8.0
+[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.3...0.10.0
+[0.9.3]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.2...0.9.3
+[0.9.2]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.1...0.9.2
+[0.9.1]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.8.0...0.9.1
+[0.8.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.5.1...0.8.0
 [0.5.1]: https://github.com/nooberfsh/prusto/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nooberfsh/prusto/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nooberfsh/prusto/compare/v0.3.0...v0.4.0
