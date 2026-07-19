@@ -95,7 +95,7 @@ async fn test_stream_yields_rows_across_pages() {
 
     // Schema is available up front, before any row is pulled.
     assert_eq!(stream.columns().len(), 6, "schema resolved up front");
-    assert_eq!(stream.columns()[0].0, "a");
+    assert_eq!(stream.columns()[0].name, "a");
 
     let mut rows = Vec::new();
     while let Some(item) = stream.next().await {
@@ -313,4 +313,70 @@ async fn test_stream_surfaces_mid_stream_error() {
     }
     assert_eq!(oks, 2, "two rows should stream before the error");
     assert!(saw_error, "the failing page must surface as an Err item");
+}
+
+// Dropping a RowStream before the query finishes must best-effort cancel the
+// query on the coordinator (fire-and-forget DELETE /v1/query/{id}).
+#[tokio::test]
+async fn test_stream_cancels_query_on_early_drop() {
+    use std::time::Duration;
+
+    let (server, host, port) = make_mock_server().await;
+    let uri = server.uri();
+    let finished = read_fixture("query_result_finished");
+    let stats = finished["stats"].clone();
+    let row = finished["data"][0].clone();
+
+    mount(
+        &server,
+        "POST",
+        "",
+        json!({
+            "id": "c", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/c/1"),
+            "stats": stats.clone(), "warnings": []
+        }),
+    )
+    .await;
+    // Schema + 2 rows + a link to a further page that we never fetch (we drop first).
+    mount(
+        &server,
+        "GET",
+        "/v1/statement/c/1",
+        json!({
+            "id": "c", "infoUri": format!("{uri}/ui"),
+            "nextUri": format!("{uri}/v1/statement/c/2"),
+            "columns": finished["columns"].clone(), "data": [row.clone(), row],
+            "stats": stats, "warnings": []
+        }),
+    )
+    .await;
+    // Cancellation endpoint.
+    Mock::given(method("DELETE"))
+        .and(path("/v1/query/c"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let cli = client(host, port);
+    {
+        let mut stream = cli.stream::<Row>("SELECT * FROM t").await.unwrap();
+        // Pull a single row, leaving the query unfinished, then drop the stream.
+        let _first = stream.next().await.expect("one row").expect("ok");
+    } // <- RowStream dropped here, mid-stream
+
+    // The cancel runs on a spawned fire-and-forget task; poll the mock for it.
+    let mut cancelled = false;
+    for _ in 0..40 {
+        let reqs = server.received_requests().await.unwrap_or_default();
+        if reqs.iter().any(|r| r.url.path() == "/v1/query/c") {
+            cancelled = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(
+        cancelled,
+        "dropping an unfinished RowStream should cancel the query"
+    );
 }

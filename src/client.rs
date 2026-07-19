@@ -19,7 +19,6 @@ use crate::build_dataset;
 use crate::error::TrinoRetryResult;
 use crate::error::{Error, Result};
 use crate::header::*;
-#[cfg(feature = "spooling")]
 use crate::models::Column;
 use crate::models::QueryError;
 use crate::models::QueryResultData;
@@ -33,7 +32,6 @@ use crate::spooling::decompress_segment_bytes;
 use crate::spooling::{SegmentFetcher, SpoolingEncoding};
 use crate::ssl::Ssl;
 use crate::transaction::TransactionId;
-use crate::types::TrinoTy;
 use crate::{DataSet, QueryResult, Row, Trino};
 
 // TODO:
@@ -477,32 +475,42 @@ fn map_page_error(error: QueryError) -> Error {
     }
 }
 
-/// A lazy stream of query rows, with the result schema resolved up front.
+/// Everything needed to fire a best-effort query cancellation from
+/// [`RowStream`]'s `Drop`, without borrowing the [`Client`].
+struct CancelOnDrop {
+    client: reqwest::Client,
+    url: String,
+    auth: Option<Auth>,
+}
+
+/// A lazy stream of query rows, with the result columns resolved up front.
 ///
-/// Created by [`Client::stream`]. The result column schema is available
-/// immediately via [`RowStream::columns`]; rows are then produced lazily,
-/// page by page, by the [`Stream`] implementation — the whole result set is
-/// never buffered in memory.
+/// Created by [`Client::stream`]. The result columns are available immediately
+/// via [`RowStream::columns`]; rows are then produced lazily, page by page, by
+/// the [`Stream`] implementation — the whole result set is never buffered in
+/// memory.
 ///
 /// `RowStream` is [`Unpin`], so it can be polled directly (e.g. with
 /// [`StreamExt::next`](futures::StreamExt::next)) without `pin!`, and [`Send`],
 /// so it can be held across `.await` inside a spawned task.
 ///
 /// # Cancellation
-/// Dropping a `RowStream` before it is exhausted stops the client from
-/// fetching further pages, but does **not** cancel the query on the Trino
-/// coordinator; the query lives on until it completes or the server times it
-/// out. Call [`Client::cancel`] with the query id if you need to release
-/// server resources on early termination.
+/// Dropping a `RowStream` before it is exhausted best-effort cancels the query
+/// on the Trino coordinator (a fire-and-forget `DELETE`), so early termination
+/// (`take`, `break`, an error, a dropped task) does not leave the query running
+/// server-side and holding coordinator resources. Cancellation is skipped once
+/// the query has finished normally, and requires a Tokio runtime to be active
+/// at drop time.
 pub struct RowStream<'a, T> {
-    columns: Vec<(String, TrinoTy)>,
+    columns: Vec<Column>,
+    cancel: Option<CancelOnDrop>,
     inner: Pin<Box<dyn Stream<Item = Result<T>> + Send + 'a>>,
 }
 
 impl<T> RowStream<'_, T> {
-    /// The result schema (column name and Trino type), resolved before the
-    /// first row is produced.
-    pub fn columns(&self) -> &[(String, TrinoTy)] {
+    /// The result columns (name, Trino type name and full type signature),
+    /// resolved before the first row is produced.
+    pub fn columns(&self) -> &[Column] {
         &self.columns
     }
 }
@@ -511,7 +519,34 @@ impl<T> Stream for RowStream<'_, T> {
     type Item = Result<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().inner.as_mut().poll_next(cx)
+        let me = self.get_mut();
+        let polled = me.inner.as_mut().poll_next(cx);
+        if let Poll::Ready(None) = polled {
+            // The query finished normally — there is nothing to cancel.
+            me.cancel = None;
+        }
+        polled
+    }
+}
+
+impl<T> Drop for RowStream<'_, T> {
+    fn drop(&mut self) {
+        let Some(cancel) = self.cancel.take() else {
+            return;
+        };
+        // Fire-and-forget; only possible from within a running Tokio runtime.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let mut req = cancel.client.delete(&cancel.url);
+                if let Some(auth) = &cancel.auth {
+                    req = match auth {
+                        Auth::Basic(u, p) => req.basic_auth(u, p.as_ref()),
+                        Auth::Jwt(t) => req.bearer_auth(t),
+                    };
+                }
+                let _ = req.send().await;
+            });
+        }
     }
 }
 
@@ -576,14 +611,15 @@ impl Client {
             }
         }
 
-        let columns = match res.columns.clone() {
-            Some(cols) => cols
-                .into_iter()
-                .map(TrinoTy::from_column)
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|e| Error::InternalError(format!("Failed to convert columns: {}", e)))?,
-            None => Vec::new(),
-        };
+        let columns = res.columns.clone().unwrap_or_default();
+
+        // Capture what is needed to cancel the query on early drop, without
+        // borrowing `self` (so the cancel can be spawned as a 'static task).
+        let cancel = Some(CancelOnDrop {
+            client: self.client.clone(),
+            url: format!("{}v1/query/{}", self.url, res.id),
+            auth: self.auth.clone(),
+        });
 
         let inner = async_stream::try_stream! {
             // `res` already holds the first schema-bearing page (with its data,
@@ -639,6 +675,7 @@ impl Client {
 
         Ok(RowStream {
             columns,
+            cancel,
             inner: Box::pin(inner),
         })
     }
