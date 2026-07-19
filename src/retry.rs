@@ -16,7 +16,7 @@ use backon::ExponentialBuilder;
 /// # use std::time::Duration;
 /// # use trino_rust_client::retry::RetryPolicy;
 /// let policy = RetryPolicy {
-///     max_attempts: 5,
+///     max_retries: 5,
 ///     min_delay: Duration::from_millis(200),
 ///     max_delay: Duration::from_secs(5),
 ///     jitter: true,
@@ -25,7 +25,7 @@ use backon::ExponentialBuilder;
 #[derive(Clone, Debug)]
 pub struct RetryPolicy {
     /// Maximum number of retries after the initial attempt.
-    pub max_attempts: usize,
+    pub max_retries: usize,
     /// Delay before the first retry.
     pub min_delay: Duration,
     /// Upper bound on the backoff delay.
@@ -37,7 +37,7 @@ pub struct RetryPolicy {
 impl Default for RetryPolicy {
     fn default() -> Self {
         Self {
-            max_attempts: 3,
+            max_retries: 3,
             min_delay: Duration::from_secs(1),
             max_delay: Duration::from_secs(2),
             jitter: false,
@@ -50,7 +50,7 @@ impl RetryPolicy {
         let builder = ExponentialBuilder::default()
             .with_min_delay(self.min_delay)
             .with_max_delay(self.max_delay)
-            .with_max_times(self.max_attempts);
+            .with_max_times(self.max_retries);
         if self.jitter {
             builder.with_jitter()
         } else {

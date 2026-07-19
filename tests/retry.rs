@@ -20,7 +20,7 @@ fn fast_retry_client(host: String, port: u16) -> trino_rust_client::client::Clie
     ClientBuilder::new("test_user", host)
         .port(port)
         .retry_policy(RetryPolicy {
-            max_attempts: 3,
+            max_retries: 3,
             min_delay: Duration::from_millis(1),
             max_delay: Duration::from_millis(1),
             jitter: false,
