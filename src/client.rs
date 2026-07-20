@@ -1035,13 +1035,34 @@ impl Client {
     /// Start a transaction.
     ///
     /// Issues `START TRANSACTION` and captures the identifier Trino returns, so
-    /// every subsequent statement on this client runs inside the transaction
+    /// statements issued afterwards on this client run inside the transaction
     /// until [`commit`](Self::commit) or [`rollback`](Self::rollback).
+    ///
+    /// # Concurrency
+    ///
+    /// A transaction is a property of the whole client, so treat a client as
+    /// single-threaded for as long as one is open. Statements already in flight
+    /// when the transaction starts do not join it, and statements issued
+    /// concurrently from another task will run inside it whether or not that
+    /// was intended.
+    ///
+    /// The nesting check below is best-effort, not atomic: the session lock is
+    /// released before `START TRANSACTION` is sent (holding it would deadlock
+    /// against the write lock taken when the response is processed). Two tasks
+    /// calling this concurrently can therefore both pass the check and open two
+    /// transactions, of which only the last is retained — the other is orphaned
+    /// on the coordinator until it times out. Use a separate client per
+    /// transaction if you need concurrency.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Transaction`] if a transaction is already active —
     /// Trino does not support nested transactions.
+    ///
+    /// On failure the transaction may nevertheless have been started, since the
+    /// identifier is captured before the statement finishes. Call
+    /// [`rollback`](Self::rollback) to discard it; that also clears an
+    /// identifier the coordinator has already expired.
     pub async fn begin_transaction(&self) -> Result<()> {
         // Bind the guard to a local: holding it across `execute` would deadlock
         // against the write lock `update_session` takes.

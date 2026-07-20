@@ -35,9 +35,13 @@ async fn transaction_round_trip() {
         "Trino returned a transaction id but the client dropped it: {started:?}"
     );
 
-    // A statement inside the transaction must succeed. If the client were
-    // sending NONE, Trino would still answer, so the real assertion is that the
-    // COMMIT below resolves this same transaction.
+    // A statement inside the transaction must succeed. This does not prove it
+    // ran transactionally-scoped: Trino answers this query whether or not the
+    // transaction header is set, and committing an empty transaction succeeds
+    // either way. The wire-level proof that the identifier is actually sent
+    // lives in tests/transaction.rs; what this asserts is that a real
+    // coordinator issues an identifier, holds it across a statement, and
+    // clears it on COMMIT.
     let rows = client
         .get_all::<Row>("SELECT 1")
         .await
