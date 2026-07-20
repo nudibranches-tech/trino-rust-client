@@ -404,7 +404,7 @@ fn add_session_header(mut builder: RequestBuilder, session: &Session) -> Request
         HEADER_PREPARED_STATEMENT,
         &session.prepared_statements,
     );
-    builder = builder.header(HEADER_TRANSACTION, session.transaction_id.to_str());
+    builder = builder.header(HEADER_TRANSACTION, session.transaction_id.as_header_value());
     builder = builder.header(HEADER_CLIENT_CAPABILITIES, "PATH,PARAMETRIC_DATETIME");
 
     // Add spooling header when feature is enabled
@@ -1176,12 +1176,15 @@ impl Client {
             resp
         );
 
-        set_header!(
-            session.transaction_id,
-            HEADER_STARTED_TRANSACTION_ID,
-            resp,
-            TransactionId::from_str
-        );
+        if let Some(v) = resp.headers().get(HEADER_STARTED_TRANSACTION_ID) {
+            match v.to_str() {
+                Ok(s) => session.transaction_id = TransactionId::from_header_value(s),
+                Err(e) => warn!(
+                    "parse header {} failed, reason: {}",
+                    HEADER_STARTED_TRANSACTION_ID, e
+                ),
+            }
+        }
         clear_header!(session.transaction_id, HEADER_CLEAR_TRANSACTION_ID, resp);
     }
 }
