@@ -2,7 +2,7 @@
 proc-macro2 = "1.0"
 quote = "1.0"
 structmeta = "0.3.0"
-syn = {version = "2.0.104", features = ["default", "extra-traits", "full"]}
+syn = {version = "3.0.2", features = ["default", "extra-traits", "full"]}
 
 [lib]
 proc-macro = true
