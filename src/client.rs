@@ -1016,6 +1016,79 @@ impl Client {
         })
     }
 
+    /// The transaction this client's session is currently bound to.
+    pub async fn transaction_id(&self) -> TransactionId {
+        self.session.read().await.transaction_id.clone()
+    }
+
+    /// Bind the session to a transaction.
+    ///
+    /// Normally unnecessary — [`begin_transaction`](Self::begin_transaction)
+    /// captures the identifier Trino issues. Use this to adopt a transaction
+    /// started elsewhere.
+    pub async fn set_transaction_id(&self, id: TransactionId) {
+        self.session.write().await.transaction_id = id;
+    }
+
+    /// Start a transaction.
+    ///
+    /// Issues `START TRANSACTION` and captures the identifier Trino returns, so
+    /// every subsequent statement on this client runs inside the transaction
+    /// until [`commit`](Self::commit) or [`rollback`](Self::rollback).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transaction`] if a transaction is already active —
+    /// Trino does not support nested transactions.
+    pub async fn begin_transaction(&self) -> Result<()> {
+        // Bind the guard to a local: holding it across `execute` would deadlock
+        // against the write lock `update_session` takes.
+        let active = self.session.read().await.transaction_id.is_active();
+        if active {
+            return Err(Error::Transaction(
+                "a transaction is already active; Trino does not support nested transactions"
+                    .to_string(),
+            ));
+        }
+        self.execute("START TRANSACTION").await?;
+        Ok(())
+    }
+
+    /// Commit the active transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transaction`] if no transaction is active.
+    pub async fn commit(&self) -> Result<()> {
+        self.end_transaction("COMMIT").await
+    }
+
+    /// Roll back the active transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transaction`] if no transaction is active.
+    pub async fn rollback(&self) -> Result<()> {
+        self.end_transaction("ROLLBACK").await
+    }
+
+    /// Shared implementation of [`commit`](Self::commit) and
+    /// [`rollback`](Self::rollback).
+    ///
+    /// Trino answers either with `X-Trino-Clear-Transaction-Id`, which
+    /// `update_session` turns back into `TransactionId::NoTransaction`.
+    async fn end_transaction(&self, statement: &str) -> Result<()> {
+        let active = self.session.read().await.transaction_id.is_active();
+        if !active {
+            return Err(Error::Transaction(format!(
+                "no active transaction to {}",
+                statement.to_lowercase()
+            )));
+        }
+        self.execute(statement).await?;
+        Ok(())
+    }
+
     async fn try_get_retry_result(&self, url: &str) -> Result<TrinoRetryResult> {
         let response = self.client.get(url).send().await?;
 
@@ -1212,8 +1285,10 @@ mod tests {
     use http::StatusCode;
     use reqwest::header::HeaderValue;
 
+    use super::*;
     use crate::client::{decode_kv_from_header, need_retry_fetch, need_retry_submit};
     use crate::error::Error;
+    use crate::transaction::TransactionId;
 
     #[test]
     fn test_decode_kv_from_header_plus_sign_to_space() {
@@ -1277,5 +1352,53 @@ mod tests {
         assert!(!need_retry_submit(&http_not_ok(
             StatusCode::INTERNAL_SERVER_ERROR
         )));
+    }
+
+    #[tokio::test]
+    async fn transaction_id_defaults_to_no_transaction() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        assert_eq!(client.transaction_id().await, TransactionId::NoTransaction);
+    }
+
+    #[tokio::test]
+    async fn set_transaction_id_is_observable() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        let id = TransactionId::Id("17cbc429-462a-4da3-9a06-02b6507d0d01".to_string());
+        client.set_transaction_id(id.clone()).await;
+        assert_eq!(client.transaction_id().await, id);
+    }
+
+    #[tokio::test]
+    async fn begin_transaction_rejects_nesting() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        client
+            .set_transaction_id(TransactionId::Id("abc".to_string()))
+            .await;
+
+        let err = client.begin_transaction().await.unwrap_err();
+        assert!(
+            matches!(err, Error::Transaction(_)),
+            "expected Error::Transaction, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_without_transaction_is_rejected() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        let err = client.commit().await.unwrap_err();
+        assert!(
+            matches!(err, Error::Transaction(_)),
+            "expected Error::Transaction, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rollback_without_transaction_is_rejected() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        let err = client.rollback().await.unwrap_err();
+        assert!(
+            matches!(err, Error::Transaction(_)),
+            "expected Error::Transaction, got {err:?}"
+        );
     }
 }

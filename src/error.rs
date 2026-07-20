@@ -37,6 +37,11 @@ pub enum Error {
     /// data received without the `spooling` feature enabled).
     #[error("protocol error: {0}")]
     Protocol(String),
+    /// A transaction operation was attempted in a state that does not allow
+    /// it — starting a transaction while one is already active, or committing
+    /// or rolling back without one.
+    #[error("transaction error: {0}")]
+    Transaction(String),
     #[error("inconsistent data")]
     InconsistentData,
     #[error("reach max attempt: {0}")]
