@@ -466,8 +466,10 @@ macro_rules! set_header_map {
     ($session:expr, $header:expr, $resp:expr, $from_str:expr) => {
         for v in $resp.headers().get_all($header) {
             if let Some((k, v)) = decode_kv_from_header(v) {
-                if let Some(v) = $from_str(&v) {
-                    $session.insert(k, v);
+                if let Some(parsed) = $from_str(&v) {
+                    $session.insert(k, parsed);
+                } else {
+                    warn!("parse header {} value '{}' failed, ignoring", $header, v)
                 }
             } else {
                 warn!("decode '{:?}' failed", v)
