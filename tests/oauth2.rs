@@ -277,7 +277,11 @@ async fn oauth2_reauth_on_expiry_sends_single_authorization_header() {
 #[tokio::test]
 async fn oauth2_real_login() {
     let host = std::env::var("TRINO_OAUTH2_HOST").expect("set TRINO_OAUTH2_HOST");
-    let mut builder = ClientBuilder::new("test-user", host)
+    // The Trino session user must match the authenticated OAuth2 principal
+    // (Keycloak `preferred_username`), otherwise Trino rejects the query as
+    // impersonation. The bundled stack's user is `alice`.
+    let user = std::env::var("TRINO_OAUTH2_USER").unwrap_or_else(|_| "alice".to_string());
+    let mut builder = ClientBuilder::new(user, host)
         .secure(true)
         .auth(Auth::new_oauth2());
     if let Ok(port) = std::env::var("TRINO_OAUTH2_PORT") {

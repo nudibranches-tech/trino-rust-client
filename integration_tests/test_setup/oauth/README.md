@@ -49,6 +49,12 @@ TRINO_OAUTH2_HOST=localhost TRINO_OAUTH2_PORT=8443 TRINO_OAUTH2_NO_VERIFY=1 \
 A browser opens for the Keycloak login — sign in as `alice` / `alice`. The test
 then completes the poll → bearer → query round-trip and asserts one row.
 
+The test's Trino session user defaults to `alice` to match the authenticated
+principal — Trino denies a query whose session user differs from the OAuth2
+principal (`Access Denied: User alice cannot impersonate user ...`) unless
+impersonation is explicitly configured. Override with `TRINO_OAUTH2_USER` for a
+coordinator whose principal differs.
+
 Tear down with:
 
 ```bash
