@@ -25,7 +25,8 @@ services:
     networks:
       - trino-oauth
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080"]
+      # Force bash — the /dev/tcp check is a bash builtin, not POSIX sh.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -33,13 +34,17 @@ services:
   # Generates a self-signed PKCS12 keystore for the coordinator once.
   gen-certs:
     image: eclipse-temurin:21-jdk
-    entrypoint: >
-      /bin/sh -c "
-      test -f /certs/keystore.p12 ||
-      keytool -genkeypair -alias trino -keyalg RSA -keysize 2048 -validity 3650
-        -storetype PKCS12 -keystore /certs/keystore.p12 -storepass changeit
-        -dname 'CN=localhost' -ext 'SAN=DNS:localhost,DNS:coordinator,IP:127.0.0.1';
-      "
+    # Exec-form entrypoint (list) so the shell script is passed as a single
+    # argument — a folded string here gets mangled by Compose's word-splitting.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ ! -f /certs/keystore.p12 ]; then
+          keytool -genkeypair -alias trino -keyalg RSA -keysize 2048 -validity 3650 \
+            -storetype PKCS12 -keystore /certs/keystore.p12 -storepass changeit \
+            -dname 'CN=localhost' -ext 'SAN=DNS:localhost,DNS:coordinator,IP:127.0.0.1'
+        fi
     volumes:
       - certs:/certs
     networks:
