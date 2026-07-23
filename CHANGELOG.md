@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 
+### Added
+- `Client::begin_transaction`, `Client::commit` and `Client::rollback` for driving Trino transactions, plus `Client::transaction_id` / `Client::set_transaction_id` to inspect and set the session's transaction at runtime (previously only settable at build time via `ClientBuilder::transaction_id`)
+- `Error::Transaction` — returned when a transaction operation is attempted in a state that does not allow it (starting one while another is active, or committing/rolling back without one)
+- `TransactionId::is_active`
+
+### Fixed
+- **Transactions were unusable.** Trino returns a new transaction's identifier in `X-Trino-Started-Transaction-Id`, but the client parsed that header with a function that recognised only four fixed literals. A real identifier matched none of them and was silently discarded, so `START TRANSACTION` succeeded on the coordinator while every subsequent statement sent `X-Trino-Transaction-Id: NONE` and ran outside the transaction — and `COMMIT`/`ROLLBACK` could not address it. The identifier is now retained and sent on every subsequent request
+- Unparseable `X-Trino-Set-Role` header values are now logged instead of being dropped silently
+
+### Changed
+- **Breaking:** `TransactionId` now models what the `X-Trino-Transaction-Id` header actually carries: `NoTransaction | Id(String)`. The `StartTransaction`, `RollBack` and `Commit` variants are removed — they are SQL statements, not header values, and sending them produced a header Trino does not accept. `to_str` is replaced by `as_header_value(&self) -> &str` and `from_str` by the infallible `from_header_value(&str) -> Self`. `TransactionId` is no longer `Copy` (it now owns a `String`); it is still `Clone`, and now also `PartialEq` and `Eq`. See the [migration guide](MIGRATION.md)
+
 ## [0.11.0] - 2026-07-19
 
 > Upgrading from 0.10.x? See the [migration guide](MIGRATION.md).

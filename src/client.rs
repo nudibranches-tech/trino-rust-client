@@ -404,7 +404,7 @@ fn add_session_header(mut builder: RequestBuilder, session: &Session) -> Request
         HEADER_PREPARED_STATEMENT,
         &session.prepared_statements,
     );
-    builder = builder.header(HEADER_TRANSACTION, session.transaction_id.to_str());
+    builder = builder.header(HEADER_TRANSACTION, session.transaction_id.as_header_value());
     builder = builder.header(HEADER_CLIENT_CAPABILITIES, "PATH,PARAMETRIC_DATETIME");
 
     // Add spooling header when feature is enabled
@@ -466,8 +466,10 @@ macro_rules! set_header_map {
     ($session:expr, $header:expr, $resp:expr, $from_str:expr) => {
         for v in $resp.headers().get_all($header) {
             if let Some((k, v)) = decode_kv_from_header(v) {
-                if let Some(v) = $from_str(&v) {
-                    $session.insert(k, v);
+                if let Some(parsed) = $from_str(&v) {
+                    $session.insert(k, parsed);
+                } else {
+                    warn!("parse header {} value '{}' failed, ignoring", $header, v)
                 }
             } else {
                 warn!("decode '{:?}' failed", v)
@@ -1016,6 +1018,100 @@ impl Client {
         })
     }
 
+    /// The transaction this client's session is currently bound to.
+    pub async fn transaction_id(&self) -> TransactionId {
+        self.session.read().await.transaction_id.clone()
+    }
+
+    /// Bind the session to a transaction.
+    ///
+    /// Normally unnecessary — [`begin_transaction`](Self::begin_transaction)
+    /// captures the identifier Trino issues. Use this to adopt a transaction
+    /// started elsewhere.
+    pub async fn set_transaction_id(&self, id: TransactionId) {
+        self.session.write().await.transaction_id = id;
+    }
+
+    /// Start a transaction.
+    ///
+    /// Issues `START TRANSACTION` and captures the identifier Trino returns, so
+    /// statements issued afterwards on this client run inside the transaction
+    /// until [`commit`](Self::commit) or [`rollback`](Self::rollback).
+    ///
+    /// # Concurrency
+    ///
+    /// A transaction is a property of the whole client, so treat a client as
+    /// single-threaded for as long as one is open. Statements already in flight
+    /// when the transaction starts do not join it, and statements issued
+    /// concurrently from another task will run inside it whether or not that
+    /// was intended.
+    ///
+    /// The nesting check below is best-effort, not atomic: the session lock is
+    /// released before `START TRANSACTION` is sent (holding it would deadlock
+    /// against the write lock taken when the response is processed). Two tasks
+    /// calling this concurrently can therefore both pass the check and open two
+    /// transactions, of which only the last is retained — the other is orphaned
+    /// on the coordinator until it times out. Use a separate client per
+    /// transaction if you need concurrency.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transaction`] if a transaction is already active —
+    /// Trino does not support nested transactions.
+    ///
+    /// On failure the transaction may nevertheless have been started, since the
+    /// identifier is captured before the statement finishes. Call
+    /// [`rollback`](Self::rollback) to discard it; that also clears an
+    /// identifier the coordinator has already expired.
+    pub async fn begin_transaction(&self) -> Result<()> {
+        // Bind the guard to a local: holding it across `execute` would deadlock
+        // against the write lock `update_session` takes.
+        let active = self.session.read().await.transaction_id.is_active();
+        if active {
+            return Err(Error::Transaction(
+                "a transaction is already active; Trino does not support nested transactions"
+                    .to_string(),
+            ));
+        }
+        self.execute("START TRANSACTION").await?;
+        Ok(())
+    }
+
+    /// Commit the active transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transaction`] if no transaction is active.
+    pub async fn commit(&self) -> Result<()> {
+        self.end_transaction("COMMIT").await
+    }
+
+    /// Roll back the active transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transaction`] if no transaction is active.
+    pub async fn rollback(&self) -> Result<()> {
+        self.end_transaction("ROLLBACK").await
+    }
+
+    /// Shared implementation of [`commit`](Self::commit) and
+    /// [`rollback`](Self::rollback).
+    ///
+    /// Trino answers either with `X-Trino-Clear-Transaction-Id`, which
+    /// `update_session` turns back into `TransactionId::NoTransaction`.
+    async fn end_transaction(&self, statement: &str) -> Result<()> {
+        let active = self.session.read().await.transaction_id.is_active();
+        if !active {
+            return Err(Error::Transaction(format!(
+                "no active transaction to {}",
+                statement.to_lowercase()
+            )));
+        }
+        self.execute(statement).await?;
+        Ok(())
+    }
+
     async fn try_get_retry_result(&self, url: &str) -> Result<TrinoRetryResult> {
         let response = self.client.get(url).send().await?;
 
@@ -1176,12 +1272,15 @@ impl Client {
             resp
         );
 
-        set_header!(
-            session.transaction_id,
-            HEADER_STARTED_TRANSACTION_ID,
-            resp,
-            TransactionId::from_str
-        );
+        if let Some(v) = resp.headers().get(HEADER_STARTED_TRANSACTION_ID) {
+            match v.to_str() {
+                Ok(s) => session.transaction_id = TransactionId::from_header_value(s),
+                Err(e) => warn!(
+                    "parse header {} failed, reason: {}",
+                    HEADER_STARTED_TRANSACTION_ID, e
+                ),
+            }
+        }
         clear_header!(session.transaction_id, HEADER_CLEAR_TRANSACTION_ID, resp);
     }
 }
@@ -1209,8 +1308,10 @@ mod tests {
     use http::StatusCode;
     use reqwest::header::HeaderValue;
 
+    use super::*;
     use crate::client::{decode_kv_from_header, need_retry_fetch, need_retry_submit};
     use crate::error::Error;
+    use crate::transaction::TransactionId;
 
     #[test]
     fn test_decode_kv_from_header_plus_sign_to_space() {
@@ -1274,5 +1375,53 @@ mod tests {
         assert!(!need_retry_submit(&http_not_ok(
             StatusCode::INTERNAL_SERVER_ERROR
         )));
+    }
+
+    #[tokio::test]
+    async fn transaction_id_defaults_to_no_transaction() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        assert_eq!(client.transaction_id().await, TransactionId::NoTransaction);
+    }
+
+    #[tokio::test]
+    async fn set_transaction_id_is_observable() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        let id = TransactionId::Id("17cbc429-462a-4da3-9a06-02b6507d0d01".to_string());
+        client.set_transaction_id(id.clone()).await;
+        assert_eq!(client.transaction_id().await, id);
+    }
+
+    #[tokio::test]
+    async fn begin_transaction_rejects_nesting() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        client
+            .set_transaction_id(TransactionId::Id("abc".to_string()))
+            .await;
+
+        let err = client.begin_transaction().await.unwrap_err();
+        assert!(
+            matches!(err, Error::Transaction(_)),
+            "expected Error::Transaction, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_without_transaction_is_rejected() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        let err = client.commit().await.unwrap_err();
+        assert!(
+            matches!(err, Error::Transaction(_)),
+            "expected Error::Transaction, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rollback_without_transaction_is_rejected() {
+        let client = ClientBuilder::new("user", "localhost").build().unwrap();
+        let err = client.rollback().await.unwrap_err();
+        assert!(
+            matches!(err, Error::Transaction(_)),
+            "expected Error::Transaction, got {err:?}"
+        );
     }
 }
