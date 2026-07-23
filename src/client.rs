@@ -599,6 +599,12 @@ impl<T> Drop for RowStream<'_, T> {
                     req = match auth {
                         Auth::Basic(u, p) => req.basic_auth(u, p.as_ref()),
                         Auth::Jwt(t) => req.bearer_auth(t),
+                        // Full acquisition/polling lands in a later task; for now
+                        // only attach a token if one is already cached.
+                        Auth::OAuth2(state) => match state.cached_token() {
+                            Some(t) => req.bearer_auth(t),
+                            None => req,
+                        },
                     };
                 }
                 let _ = req.send().await;
@@ -1226,6 +1232,12 @@ impl Client {
             match auth {
                 Auth::Basic(u, p) => req.basic_auth(u, p.as_ref()),
                 Auth::Jwt(t) => req.bearer_auth(t),
+                // Full acquisition/polling lands in a later task; for now only
+                // attach a token if one is already cached.
+                Auth::OAuth2(state) => match state.cached_token() {
+                    Some(t) => req.bearer_auth(t),
+                    None => req,
+                },
             }
         } else {
             req

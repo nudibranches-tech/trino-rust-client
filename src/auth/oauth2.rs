@@ -1,3 +1,8 @@
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+use crate::error::Result;
+
 /// The redirect + token endpoints extracted from a Trino `WWW-Authenticate`
 /// Bearer challenge.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,7 +34,12 @@ pub fn parse_www_authenticate(header: &str) -> Option<Challenge> {
         };
         // The first key may arrive as `bearer x_redirect_server`; take the last
         // whitespace-separated token as the real key.
-        let key = key.trim().rsplit(char::is_whitespace).next().unwrap_or("").trim();
+        let key = key
+            .trim()
+            .rsplit(char::is_whitespace)
+            .next()
+            .unwrap_or("")
+            .trim();
         let value = value.trim().trim_matches('"');
         match key.to_ascii_lowercase().as_str() {
             "x_redirect_server" => x_redirect_server = Some(value.to_string()),
@@ -44,6 +54,64 @@ pub fn parse_www_authenticate(header: &str) -> Option<Challenge> {
         x_redirect_server: x_redirect_server.unwrap_or_default(),
         x_token_server: x_token_server?,
     })
+}
+
+/// Presents the OAuth2 login URL to the user. The client calls this once per
+/// authentication; it must return promptly — it only *shows* the URL, it does
+/// not wait for the user to finish (the client detects completion by polling).
+pub trait RedirectHandler: Send + Sync {
+    fn redirect(&self, url: &str) -> Result<()>;
+}
+
+/// Default handler: opens the system browser and also prints the URL to stderr
+/// so headless / SSH sessions can still complete the flow.
+pub struct BrowserRedirectHandler;
+
+impl RedirectHandler for BrowserRedirectHandler {
+    fn redirect(&self, url: &str) -> Result<()> {
+        eprintln!("Open the following URL in a browser to authenticate:\n{url}");
+        // Best-effort; failure to launch a browser is not fatal — the URL is
+        // already on stderr.
+        let _ = open::that(url);
+        Ok(())
+    }
+}
+
+/// Shared, interior-mutable state behind `Auth::OAuth2`. Cloning the enclosing
+/// `Arc` shares one token cache across every clone of the `Client`.
+pub struct OAuth2State {
+    pub(crate) token: RwLock<Option<String>>,
+    /// Serializes the browser+poll flow so concurrent 401s open one browser.
+    // Read by the acquire/poll flow landing in a later task; unused until then.
+    #[allow(dead_code)]
+    pub(crate) acquire: tokio::sync::Mutex<()>,
+    pub(crate) handler: Arc<dyn RedirectHandler>,
+    // Read by the poll loop landing in a later task; unused until then.
+    #[allow(dead_code)]
+    pub(crate) max_poll_attempts: usize,
+    #[allow(dead_code)]
+    pub(crate) poll_timeout: Duration,
+}
+
+impl OAuth2State {
+    pub fn new(
+        handler: Arc<dyn RedirectHandler>,
+        max_poll_attempts: usize,
+        poll_timeout: Duration,
+    ) -> Self {
+        Self {
+            token: RwLock::new(None),
+            acquire: tokio::sync::Mutex::new(()),
+            handler,
+            max_poll_attempts,
+            poll_timeout,
+        }
+    }
+
+    /// The currently cached bearer token, if the flow has completed.
+    pub fn cached_token(&self) -> Option<String> {
+        self.token.read().unwrap().clone()
+    }
 }
 
 #[cfg(test)]
@@ -90,5 +158,29 @@ mod tests {
     fn none_on_non_ascii_header_without_panicking() {
         // A multi-byte char straddling byte index 6 must not panic the byte slice.
         assert!(parse_www_authenticate("aaaaaé x_token_server=\"https://c/t\"").is_none());
+    }
+
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[test]
+    fn state_defaults_have_no_token() {
+        let state = OAuth2State::new(
+            Arc::new(BrowserRedirectHandler),
+            10,
+            Duration::from_secs(120),
+        );
+        assert!(state.cached_token().is_none());
+    }
+
+    #[test]
+    fn state_stores_and_reads_token() {
+        let state = OAuth2State::new(
+            Arc::new(BrowserRedirectHandler),
+            10,
+            Duration::from_secs(120),
+        );
+        *state.token.write().unwrap() = Some("tok".to_string());
+        assert_eq!(state.cached_token().as_deref(), Some("tok"));
     }
 }
