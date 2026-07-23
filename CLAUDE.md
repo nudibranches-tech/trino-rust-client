@@ -76,11 +76,15 @@ transient failure, query submission (POST) only when definitely not processed.
 ## Manual OAuth2 e2e
 
 `tests/oauth2.rs::oauth2_real_login` exercises `Auth::new_oauth2()` against a
-real, OAuth2-configured Trino coordinator (interactive browser login — not
-run in CI, and no docker-compose stack is committed for it). To run it,
-point `TRINO_OAUTH2_HOST` at your own Trino + IdP setup and complete the
-browser login when it opens:
+real, OAuth2-configured Trino coordinator (interactive browser login — not run
+in CI). A local Trino + Keycloak stack is committed at
+`integration_tests/test_setup/oauth/` (see its README for the one-time
+`/etc/hosts` step and setup gotchas):
 
 ```bash
-TRINO_OAUTH2_HOST=coordinator.example.com cargo test --test oauth2 -- --ignored oauth2_real_login
+docker compose -f integration_tests/test_setup/oauth/docker-compose.yml up -d
+TRINO_OAUTH2_HOST=localhost TRINO_OAUTH2_PORT=8443 TRINO_OAUTH2_NO_VERIFY=1 \
+    cargo test --test oauth2 -- --ignored oauth2_real_login
 ```
+
+Or point `TRINO_OAUTH2_HOST` (and `TRINO_OAUTH2_PORT`) at your own Trino + IdP.

@@ -260,21 +260,35 @@ async fn oauth2_reauth_on_expiry_sends_single_authorization_header() {
 }
 
 /// End-to-end against a real Trino coordinator configured for OAuth2. Not run
-/// in CI — there is no committed docker-compose stack for this; point it at
-/// your own Trino + IdP setup (see "Manual OAuth2 e2e" in `CLAUDE.md`).
+/// in CI — the interactive flow needs a human to complete the browser login.
 ///
-/// Run locally:
-///   TRINO_OAUTH2_HOST=coordinator.example.com cargo test --test oauth2 -- --ignored oauth2_real_login
-/// A browser window opens for the IdP login; complete it to let the test pass.
+/// Run against the bundled local stack (Trino + Keycloak) at
+/// `integration_tests/test_setup/oauth/` (see its README for the one-time
+/// `/etc/hosts` step and the two setup gotchas):
+///
+///   docker compose -f integration_tests/test_setup/oauth/docker-compose.yml up -d
+///   TRINO_OAUTH2_HOST=localhost TRINO_OAUTH2_PORT=8443 TRINO_OAUTH2_NO_VERIFY=1 \
+///       cargo test --test oauth2 -- --ignored oauth2_real_login
+///
+/// A browser opens for the Keycloak login (user `alice` / `alice`); complete it
+/// to let the test pass. Point it at your own coordinator by setting just
+/// `TRINO_OAUTH2_HOST` (and `TRINO_OAUTH2_PORT` if not 443).
 #[ignore = "requires a real OAuth2-configured Trino coordinator and an interactive browser login"]
 #[tokio::test]
 async fn oauth2_real_login() {
     let host = std::env::var("TRINO_OAUTH2_HOST").expect("set TRINO_OAUTH2_HOST");
-    let client = ClientBuilder::new("test-user", host)
+    let mut builder = ClientBuilder::new("test-user", host)
         .secure(true)
-        .auth(Auth::new_oauth2())
-        .build()
-        .unwrap();
+        .auth(Auth::new_oauth2());
+    if let Ok(port) = std::env::var("TRINO_OAUTH2_PORT") {
+        builder = builder.port(port.parse().expect("TRINO_OAUTH2_PORT must be a u16"));
+    }
+    // The bundled local stack uses a self-signed certificate; set
+    // TRINO_OAUTH2_NO_VERIFY=1 to skip TLS verification against it.
+    if std::env::var("TRINO_OAUTH2_NO_VERIFY").is_ok() {
+        builder = builder.no_verify(true);
+    }
+    let client = builder.build().unwrap();
     let ds = client
         .get_all::<Row>("SELECT 1")
         .await
