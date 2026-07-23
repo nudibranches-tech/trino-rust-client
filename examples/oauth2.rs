@@ -22,7 +22,10 @@ async fn main() {
 
     let user = var("USERNAME").unwrap();
     let host = var("HOST").unwrap();
-    let port = var("PORT").unwrap_or_else(|_| "8443".into()).parse().unwrap();
+    let port = var("PORT")
+        .unwrap_or_else(|_| "8443".into())
+        .parse()
+        .unwrap();
     let catalog = var("CATALOG").unwrap();
     let sql = var("SQL").unwrap();
 
