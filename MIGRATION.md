@@ -3,6 +3,126 @@
 Guidance for upgrading across breaking releases. See [CHANGELOG.md](CHANGELOG.md)
 for the full list of changes.
 
+## 0.11.0 → 0.12.0
+
+### Transactions (`TransactionId` reshaped)
+
+`TransactionId` previously carried four fixed literals and could not represent a
+transaction identifier at all, which meant transactions did not work: the
+identifier Trino returned was silently discarded. It now models exactly what the
+`X-Trino-Transaction-Id` header carries.
+
+`StartTransaction`, `RollBack` and `Commit` are gone. They were SQL statements,
+not header values — code that set them was sending a header Trino does not
+accept, and was not in a transaction either way. Use the new `Client` methods.
+
+**Before:**
+
+```rust
+use trino_rust_client::transaction::TransactionId;
+
+let client = ClientBuilder::new("user", "localhost")
+    .transaction_id(TransactionId::StartTransaction)
+    .build()?;
+
+// ... and there was no way to commit: the id was never captured.
+```
+
+**After:**
+
+```rust
+client.begin_transaction().await?;
+client.execute("INSERT INTO t VALUES (1)").await?;
+client.commit().await?;   // or client.rollback().await?
+```
+
+To inspect or adopt a transaction directly:
+
+```rust
+use trino_rust_client::transaction::TransactionId;
+
+let id = client.transaction_id().await;       // TransactionId::Id(..) when active
+client.set_transaction_id(id).await;          // adopt one started elsewhere
+```
+
+Note both accessors are `async` — the session sits behind a `tokio::sync::RwLock`.
+
+If you match on `TransactionId`, the exhaustive set is now two variants:
+
+**Before:**
+
+```rust
+match id {
+    TransactionId::NoTransaction => { /* … */ }
+    TransactionId::StartTransaction => { /* … */ }
+    TransactionId::RollBack => { /* … */ }
+    TransactionId::Commit => { /* … */ }
+}
+```
+
+**After:**
+
+```rust
+match id {
+    TransactionId::NoTransaction => { /* … */ }
+    TransactionId::Id(uuid) => { /* … */ }
+}
+```
+
+### Accessor renames
+
+| Before | After | Note |
+|---|---|---|
+| `TransactionId::to_str(&self) -> &'static str` | `TransactionId::as_header_value(&self) -> &str` | cannot be `'static` now that a variant owns a `String` |
+| `TransactionId::from_str(&str) -> Option<Self>` | `TransactionId::from_header_value(&str) -> Self` | infallible: anything other than `NONE` is an identifier |
+
+### `TransactionId` is no longer `Copy`
+
+It owns a `String`. It is still `Clone`, and now also `PartialEq` and `Eq`. Add
+`.clone()` where you relied on implicit copies.
+
+### `Auth` is now `#[non_exhaustive]` (OAuth2 support)
+
+`Auth` gained a new `OAuth2` variant for interactive browser-based
+authentication, alongside `Basic` and `Jwt`. To let future variants be added
+without another breaking release, `Auth` is now `#[non_exhaustive]` — an
+exhaustive `match` no longer compiles and needs a wildcard arm.
+
+**Before:**
+
+```rust
+match auth {
+    Auth::Basic(u, p) => ...,
+    Auth::Jwt(t) => ...,
+}
+```
+
+**After:**
+
+```rust
+match auth {
+    Auth::Basic(u, p) => ...,
+    Auth::Jwt(t) => ...,
+    _ => ...,            // required: Auth is now #[non_exhaustive]
+}
+```
+
+To use OAuth2:
+
+```rust
+let client = ClientBuilder::new("user", "coordinator.example.com")
+    .secure(true)
+    .auth(Auth::new_oauth2())
+    .build()?;
+```
+
+On a `401` Bearer challenge the client presents the login URL (opens a
+browser and prints it to stderr by default; supply a custom `RedirectHandler`
+via `Auth::new_oauth2_with_handler` to change that), polls the Trino token
+endpoint, and retries the request with the bearer token once the user
+completes the login. The token is cached in-memory for the life of the
+`Client`.
+
 ## 0.10.x → 0.11.0
 
 ### Error handling (restructured `Error` enum)

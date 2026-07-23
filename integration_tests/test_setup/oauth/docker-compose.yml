@@ -1,0 +1,83 @@
+# Manual, LOCAL-ONLY stack: Trino (TLS + OAuth2) behind Keycloak, with a ready
+# test user. NOT run in CI — the interactive OAuth2 flow needs a human to
+# complete the browser login. Pairs with tests/oauth2.rs::oauth2_real_login.
+#
+# See README.md in this directory for setup, the two common gotchas, and the run
+# command. This is a starting point, not turnkey — expect to iterate on the
+# Keycloak redirect URIs / issuer hostname on first run.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Pin the issuer/frontend hostname so the token issuer matches what Trino
+      # validates AND what your host browser reaches. Requires `keycloak` to
+      # resolve to 127.0.0.1 on the host (see README) so http://keycloak:8080
+      # works from both the Trino container and your browser.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/trino-realm.json:/opt/keycloak/data/import/trino-realm.json:ro
+    networks:
+      - trino-oauth
+    healthcheck:
+      # Force bash — the /dev/tcp check is a bash builtin, not POSIX sh.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Generates a self-signed PKCS12 keystore for the coordinator once.
+  gen-certs:
+    image: eclipse-temurin:21-jdk
+    # Exec-form entrypoint (list) so the shell script is passed as a single
+    # argument — a folded string here gets mangled by Compose's word-splitting.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ ! -f /certs/keystore.p12 ]; then
+          keytool -genkeypair -alias trino -keyalg RSA -keysize 2048 -validity 3650 \
+            -storetype PKCS12 -keystore /certs/keystore.p12 -storepass changeit \
+            -dname 'CN=localhost' -ext 'SAN=DNS:localhost,DNS:coordinator,IP:127.0.0.1'
+        fi
+    volumes:
+      - certs:/certs
+    networks:
+      - trino-oauth
+
+  coordinator:
+    image: trinodb/trino:478
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      gen-certs:
+        condition: service_completed_successfully
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./trino/etc:/etc/trino
+      - certs:/etc/trino/certs:ro
+    environment:
+      - JAVA_OPTS=-Xmx1G -XX:+UseG1GC
+    networks:
+      - trino-oauth
+    healthcheck:
+      # The https endpoint requires auth; the internal http port stays open for
+      # a simple liveness probe.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+networks:
+  trino-oauth:
+    driver: bridge
+
+volumes:
+  certs:
