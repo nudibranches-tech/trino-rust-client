@@ -5,10 +5,11 @@ against a real Trino coordinator and a real IdP (Keycloak). It backs
 `tests/oauth2.rs::oauth2_real_login`.
 
 > **Not run in CI.** The interactive flow requires a human to complete the
-> Keycloak login in a browser — there is no automated login here. This stack is
-> a **starting point**, not turnkey: expect to iterate on the Keycloak redirect
-> URIs and the issuer/hostname alignment on first run (the two gotchas below are
-> where it usually breaks first). It was authored but not executed end-to-end.
+> Keycloak login in a browser — there is no automated login here. The stack has
+> been brought up and verified up to that human step: the coordinator starts
+> healthy and returns the expected `401` + `WWW-Authenticate: Bearer
+> x_redirect_server=..., x_token_server=...` challenge over TLS. Completing the
+> browser login (the two gotchas below) is the part you drive yourself.
 
 ## What's in it
 
