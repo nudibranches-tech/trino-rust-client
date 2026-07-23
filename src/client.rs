@@ -1254,7 +1254,44 @@ impl Client {
         F: FnOnce(Response) -> Fut,
         Fut: std::future::Future<Output = Result<R>>,
     {
+        // Clone up front so an OAuth2 401 can be retried with a fresh token.
+        // Bodies here are `String`s, so `try_clone` always succeeds.
+        let retry_req = req.try_clone();
         let resp = req.send().await?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            if let (Some(Auth::OAuth2(state)), Some(retry_req)) = (self.auth.as_ref(), retry_req) {
+                if let Some(challenge) = resp
+                    .headers()
+                    .get(reqwest::header::WWW_AUTHENTICATE)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(crate::auth::parse_www_authenticate)
+                {
+                    self.acquire_oauth2_token(state, &challenge).await?;
+                    let resp = self.auth_req(retry_req).send().await?;
+                    return self
+                        .finish_send(resp, expected_status, handle_response)
+                        .await;
+                }
+            }
+        }
+
+        self.finish_send(resp, expected_status, handle_response)
+            .await
+    }
+
+    /// Shared response-status handling (extracted so both the first and the
+    /// retried OAuth2 request go through the same path).
+    async fn finish_send<R, F, Fut>(
+        &self,
+        resp: Response,
+        expected_status: StatusCode,
+        handle_response: F,
+    ) -> Result<R>
+    where
+        F: FnOnce(Response) -> Fut,
+        Fut: std::future::Future<Output = Result<R>>,
+    {
         let status = resp.status();
         if status != expected_status {
             let data = resp.text().await.unwrap_or("".to_string());
@@ -1263,6 +1300,25 @@ impl Client {
             self.update_session(&resp).await;
             handle_response(resp).await
         }
+    }
+
+    /// Acquire an OAuth2 token under a single-flight lock: if another task
+    /// already refreshed while we waited, reuse that token instead of opening a
+    /// second browser.
+    async fn acquire_oauth2_token(
+        &self,
+        state: &std::sync::Arc<crate::auth::OAuth2State>,
+        challenge: &crate::auth::Challenge,
+    ) -> Result<()> {
+        let before = state.cached_token();
+        let _guard = state.acquire.lock().await;
+        // Someone else finished the flow while we waited for the lock.
+        if state.cached_token() != before {
+            return Ok(());
+        }
+        let token = crate::auth::run_flow(&self.client, state, challenge).await?;
+        *state.token.write().unwrap() = Some(token);
+        Ok(())
     }
 
     async fn update_session(&self, resp: &Response) {

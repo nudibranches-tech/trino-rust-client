@@ -84,8 +84,6 @@ impl RedirectHandler for BrowserRedirectHandler {
 pub struct OAuth2State {
     pub(crate) token: RwLock<Option<String>>,
     /// Serializes the browser+poll flow so concurrent 401s open one browser.
-    // Read by the acquire/poll flow landing in a later task; unused until then.
-    #[allow(dead_code)]
     pub(crate) acquire: tokio::sync::Mutex<()>,
     pub(crate) handler: Arc<dyn RedirectHandler>,
     pub(crate) max_poll_attempts: usize,
@@ -123,9 +121,6 @@ struct TokenResponse {
 
 /// Present the login URL, then poll the token server following `nextUri` until a
 /// token is returned, an error is reported, or attempts/timeout are exhausted.
-// Called from `Client::send`'s 401 handling landing in a later task; unused
-// outside tests until then.
-#[allow(dead_code)]
 pub(crate) async fn run_flow(
     client: &reqwest::Client,
     state: &OAuth2State,
@@ -149,7 +144,7 @@ pub(crate) async fn run_flow(
         })
         .await
         {
-            Ok(result) => result?, // network/decode error propagates as before
+            Ok(result) => result?,  // network/decode error propagates as before
             Err(_elapsed) => break, // exceeded poll_timeout on this poll
         };
 

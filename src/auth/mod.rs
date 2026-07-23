@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 mod oauth2;
+pub(crate) use oauth2::run_flow;
 pub use oauth2::{
     parse_www_authenticate, BrowserRedirectHandler, Challenge, OAuth2State, RedirectHandler,
 };
