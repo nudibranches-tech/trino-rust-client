@@ -72,3 +72,15 @@ transient failure, query submission (POST) only when definitely not processed.
 - Tests for `client.rs` internals go in its bottom `mod tests`; integration tests
   live in `tests/` (wiremock for HTTP, fixtures in `tests/data/models/`).
 - Releases follow the process in the `release` skill (`.claude/skills/release/`).
+
+## Manual OAuth2 e2e
+
+`tests/oauth2.rs::oauth2_real_login` exercises `Auth::new_oauth2()` against a
+real, OAuth2-configured Trino coordinator (interactive browser login — not
+run in CI, and no docker-compose stack is committed for it). To run it,
+point `TRINO_OAUTH2_HOST` at your own Trino + IdP setup and complete the
+browser login when it opens:
+
+```bash
+TRINO_OAUTH2_HOST=coordinator.example.com cargo test --test oauth2 -- --ignored oauth2_real_login
+```

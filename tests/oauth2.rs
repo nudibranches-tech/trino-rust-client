@@ -166,3 +166,26 @@ async fn oauth2_401_without_challenge_is_http_not_ok() {
     ));
     assert_eq!(handler.seen.lock().unwrap().len(), 0);
 }
+
+/// End-to-end against a real Trino coordinator configured for OAuth2. Not run
+/// in CI — there is no committed docker-compose stack for this; point it at
+/// your own Trino + IdP setup (see "Manual OAuth2 e2e" in `CLAUDE.md`).
+///
+/// Run locally:
+///   TRINO_OAUTH2_HOST=coordinator.example.com cargo test --test oauth2 -- --ignored oauth2_real_login
+/// A browser window opens for the IdP login; complete it to let the test pass.
+#[ignore = "requires a real OAuth2-configured Trino coordinator and an interactive browser login"]
+#[tokio::test]
+async fn oauth2_real_login() {
+    let host = std::env::var("TRINO_OAUTH2_HOST").expect("set TRINO_OAUTH2_HOST");
+    let client = ClientBuilder::new("test-user", host)
+        .secure(true)
+        .auth(Auth::new_oauth2())
+        .build()
+        .unwrap();
+    let ds = client
+        .get_all::<Row>("SELECT 1")
+        .await
+        .expect("query ok after login");
+    assert_eq!(ds.len(), 1);
+}

@@ -81,6 +81,48 @@ match id {
 It owns a `String`. It is still `Clone`, and now also `PartialEq` and `Eq`. Add
 `.clone()` where you relied on implicit copies.
 
+### `Auth` is now `#[non_exhaustive]` (OAuth2 support)
+
+`Auth` gained a new `OAuth2` variant for interactive browser-based
+authentication, alongside `Basic` and `Jwt`. To let future variants be added
+without another breaking release, `Auth` is now `#[non_exhaustive]` — an
+exhaustive `match` no longer compiles and needs a wildcard arm.
+
+**Before:**
+
+```rust
+match auth {
+    Auth::Basic(u, p) => ...,
+    Auth::Jwt(t) => ...,
+}
+```
+
+**After:**
+
+```rust
+match auth {
+    Auth::Basic(u, p) => ...,
+    Auth::Jwt(t) => ...,
+    _ => ...,            // required: Auth is now #[non_exhaustive]
+}
+```
+
+To use OAuth2:
+
+```rust
+let client = ClientBuilder::new("user", "coordinator.example.com")
+    .secure(true)
+    .auth(Auth::new_oauth2())
+    .build()?;
+```
+
+On a `401` Bearer challenge the client presents the login URL (opens a
+browser and prints it to stderr by default; supply a custom `RedirectHandler`
+via `Auth::new_oauth2_with_handler` to change that), polls the Trino token
+endpoint, and retries the request with the bearer token once the user
+completes the login. The token is cached in-memory for the life of the
+`Client`.
+
 ## 0.10.x → 0.11.0
 
 ### Error handling (restructured `Error` enum)
