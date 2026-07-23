@@ -12,9 +12,12 @@ pub struct Challenge {
 /// `x_token_server` (the one field the flow cannot proceed without).
 pub fn parse_www_authenticate(header: &str) -> Option<Challenge> {
     let trimmed = header.trim();
-    // Must be a Bearer challenge.
-    if trimmed.len() < 6 || !trimmed[..6].eq_ignore_ascii_case("bearer") {
-        return None;
+    // Must be a Bearer challenge. Use `get` (not indexing) so a non-ASCII or
+    // malformed header degrades to `None` instead of panicking on a byte slice
+    // that lands inside a multi-byte char.
+    match trimmed.get(..6) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("bearer") => {}
+        _ => return None,
     }
 
     let mut x_redirect_server = None;
@@ -81,5 +84,11 @@ mod tests {
     #[test]
     fn none_when_not_bearer() {
         assert!(parse_www_authenticate(r#"Basic realm="trino""#).is_none());
+    }
+
+    #[test]
+    fn none_on_non_ascii_header_without_panicking() {
+        // A multi-byte char straddling byte index 6 must not panic the byte slice.
+        assert!(parse_www_authenticate("aaaaaé x_token_server=\"https://c/t\"").is_none());
     }
 }
