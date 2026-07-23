@@ -82,6 +82,7 @@ pub mod models;
 #[cfg(feature = "spooling")]
 pub mod spooling;
 
+pub mod retry;
 pub mod selected_role;
 pub mod session;
 pub mod ssl;

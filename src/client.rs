@@ -23,6 +23,7 @@ use crate::models::Column;
 use crate::models::QueryResultData;
 #[cfg(feature = "spooling")]
 use crate::models::SpooledData;
+use crate::retry::RetryPolicy;
 use crate::selected_role::SelectedRole;
 use crate::session::{Session, SessionBuilder};
 #[cfg(feature = "spooling")]
@@ -48,7 +49,7 @@ pub struct Client {
     client: reqwest::Client,
     session: RwLock<Session>,
     auth: Option<Auth>,
-    max_attempt: usize,
+    retry: RetryPolicy,
     url: Url,
     #[cfg(feature = "spooling")]
     segment_fetcher: SegmentFetcher,
@@ -74,7 +75,7 @@ pub struct ClientBuilder {
     session: SessionBuilder,
     auth: Option<Auth>,
     auth_http_insecure: bool,
-    max_attempt: usize,
+    retry: RetryPolicy,
     ssl: Option<Ssl>,
     no_verify: bool,
     #[cfg(feature = "spooling")]
@@ -105,7 +106,7 @@ impl ClientBuilder {
             session: builder,
             auth: None,
             auth_http_insecure: false,
-            max_attempt: 3,
+            retry: RetryPolicy::default(),
             ssl: None,
             no_verify: false,
             #[cfg(feature = "spooling")]
@@ -280,7 +281,13 @@ impl ClientBuilder {
     }
 
     pub fn max_attempt(mut self, s: usize) -> Self {
-        self.max_attempt = s;
+        self.retry.max_retries = s;
+        self
+    }
+
+    /// Set the full retry/backoff policy for transient failures.
+    pub fn retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.retry = policy;
         self
     }
 
@@ -291,7 +298,7 @@ impl ClientBuilder {
 
     pub fn build(self) -> Result<Client> {
         let session = self.session.build()?;
-        let max_attempt = self.max_attempt;
+        let retry = self.retry.clone();
 
         if (self.auth.is_some() && session.url.scheme() == "http") && !self.auth_http_insecure {
             return Err(Error::BasicAuthWithHttp);
@@ -326,7 +333,7 @@ impl ClientBuilder {
             url: session.url.clone(),
             session: RwLock::new(session),
             client,
-            max_attempt,
+            retry,
             #[cfg(feature = "spooling")]
             segment_fetcher,
         };
@@ -482,10 +489,38 @@ macro_rules! clear_header_map {
     };
 }
 
-fn need_retry(e: &Error) -> bool {
+fn transient_status(code: &StatusCode) -> bool {
+    matches!(
+        *code,
+        StatusCode::BAD_GATEWAY | StatusCode::SERVICE_UNAVAILABLE | StatusCode::GATEWAY_TIMEOUT
+    )
+}
+
+/// Retry predicate for **idempotent** requests (fetching result pages via
+/// `GET nextUri`). Any transient failure is safe to retry: gateway/availability
+/// responses (HTTP 502/503/504) and low-level connect/timeout errors. Query,
+/// decode, protocol and other errors are terminal.
+fn need_retry_fetch(e: &Error) -> bool {
     match e {
-        Error::HttpError(e) => e.status() == Some(StatusCode::SERVICE_UNAVAILABLE),
-        Error::HttpNotOk(code, _) => code == &StatusCode::SERVICE_UNAVAILABLE,
+        Error::HttpError(e) => {
+            e.is_timeout() || e.is_connect() || e.status().as_ref().is_some_and(transient_status)
+        }
+        Error::HttpNotOk(code, _) => transient_status(code),
+        _ => false,
+    }
+}
+
+/// Retry predicate for **query submission** (`POST /v1/statement`). Only retry
+/// when the request was definitely NOT processed by the server, so a
+/// non-idempotent statement (e.g. `INSERT`/`UPDATE`/DDL via [`Client::execute`])
+/// is never submitted twice. A timeout — or a 502/504 from an intermediary — is
+/// ambiguous (the query may already be running) and is treated as terminal.
+fn need_retry_submit(e: &Error) -> bool {
+    match e {
+        // Connection was never established, so the request was not sent.
+        Error::HttpError(e) => e.is_connect(),
+        // 503 means the coordinator rejected the request without processing it.
+        Error::HttpNotOk(code, _) => *code == StatusCode::SERVICE_UNAVAILABLE,
         _ => false,
     }
 }
@@ -990,9 +1025,7 @@ impl Client {
     }
 
     fn retry_policy(&self) -> ExponentialBuilder {
-        ExponentialBuilder::default()
-            .with_max_times(self.max_attempt)
-            .with_max_delay(Duration::from_secs(2))
+        self.retry.backoff()
     }
 
     async fn get_retry<T>(&self, sql: String) -> Result<QueryResult<T>>
@@ -1002,7 +1035,11 @@ impl Client {
     {
         let result = || async { self.get::<T>(sql.clone()).await };
 
-        result.retry(self.retry_policy()).when(need_retry).await
+        // Submission is not idempotent — retry only when definitely not processed.
+        result
+            .retry(self.retry_policy())
+            .when(need_retry_submit)
+            .await
     }
 
     async fn get_next_retry<T>(&self, url: &str) -> Result<QueryResult<T>>
@@ -1012,7 +1049,11 @@ impl Client {
     {
         let result = || async { self.get_next(url).await };
 
-        result.retry(self.retry_policy()).when(need_retry).await
+        // Page fetches are idempotent GETs — any transient failure is retryable.
+        result
+            .retry(self.retry_policy())
+            .when(need_retry_fetch)
+            .await
     }
 
     /// Submit `sql` and return the first result page.
@@ -1165,9 +1206,11 @@ fn decode_kv_from_header(input: &HeaderValue) -> Option<(String, String)> {
 
 #[cfg(test)]
 mod tests {
+    use http::StatusCode;
     use reqwest::header::HeaderValue;
 
-    use crate::client::decode_kv_from_header;
+    use crate::client::{decode_kv_from_header, need_retry_fetch, need_retry_submit};
+    use crate::error::Error;
 
     #[test]
     fn test_decode_kv_from_header_plus_sign_to_space() {
@@ -1187,5 +1230,49 @@ mod tests {
         let (key, value) = result.unwrap();
         assert_eq!(key, "statement");
         assert_eq!(value, "show tables");
+    }
+
+    fn http_not_ok(code: StatusCode) -> Error {
+        Error::HttpNotOk(code, String::new())
+    }
+
+    #[test]
+    fn fetch_retries_all_transient_statuses() {
+        // Idempotent page fetches retry every transient gateway/availability status.
+        for code in [
+            StatusCode::BAD_GATEWAY,
+            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::GATEWAY_TIMEOUT,
+        ] {
+            assert!(need_retry_fetch(&http_not_ok(code)), "{code}");
+        }
+        // Client errors and non-transient 5xx fail fast.
+        for code in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            assert!(!need_retry_fetch(&http_not_ok(code)), "{code}");
+        }
+        assert!(!need_retry_fetch(&Error::Protocol(
+            "mixed protocols".into()
+        )));
+        assert!(!need_retry_fetch(&Error::InconsistentData));
+    }
+
+    #[test]
+    fn submit_only_retries_definitely_unprocessed() {
+        // Submission is non-idempotent: only 503 (rejected, not processed) is retried.
+        assert!(need_retry_submit(&http_not_ok(
+            StatusCode::SERVICE_UNAVAILABLE
+        )));
+        // 502/504 are ambiguous (a proxy may have forwarded the query) -> terminal.
+        assert!(!need_retry_submit(&http_not_ok(StatusCode::BAD_GATEWAY)));
+        assert!(!need_retry_submit(&http_not_ok(
+            StatusCode::GATEWAY_TIMEOUT
+        )));
+        assert!(!need_retry_submit(&http_not_ok(
+            StatusCode::INTERNAL_SERVER_ERROR
+        )));
     }
 }
