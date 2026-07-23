@@ -6,7 +6,7 @@ use trino_rust_client::client::ClientBuilder;
 use trino_rust_client::error::Result as TrinoResult;
 use trino_rust_client::{Client, Row};
 
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 struct RecordingHandler {
@@ -24,6 +24,21 @@ struct HeaderAbsent(&'static str);
 impl wiremock::Match for HeaderAbsent {
     fn matches(&self, req: &wiremock::Request) -> bool {
         !req.headers.contains_key(self.0)
+    }
+}
+
+/// Matches iff the request carries EXACTLY ONE `Authorization` header whose
+/// value is `Bearer <token>`. Guards against `bearer_auth` appending a second
+/// header on the OAuth2 re-auth retry.
+struct SingleBearer(&'static str);
+impl wiremock::Match for SingleBearer {
+    fn matches(&self, req: &wiremock::Request) -> bool {
+        let vals: Vec<_> = req
+            .headers
+            .get_all(reqwest::header::AUTHORIZATION)
+            .into_iter()
+            .collect();
+        vals.len() == 1 && vals[0].to_str().ok() == Some(&format!("Bearer {}", self.0))
     }
 }
 
@@ -165,6 +180,83 @@ async fn oauth2_401_without_challenge_is_http_not_ok() {
         trino_rust_client::error::Error::HttpNotOk(code, _) if code == reqwest::StatusCode::UNAUTHORIZED
     ));
     assert_eq!(handler.seen.lock().unwrap().len(), 0);
+}
+
+/// Simulates a cached OAuth2 token expiring between two queries on the same
+/// client. The re-auth retry must carry exactly ONE `Authorization` header —
+/// `bearer_auth` APPENDS, so if auth is applied before the retry clone is taken
+/// the retried request goes out with two headers and the coordinator rejects it.
+#[tokio::test]
+async fn oauth2_reauth_on_expiry_sends_single_authorization_header() {
+    let server = MockServer::start().await;
+
+    let challenge1 = format!(
+        r#"Bearer x_redirect_server="https://login/redirect", x_token_server="{}/oauth2/token/1""#,
+        server.uri()
+    );
+    let challenge2 = format!(
+        r#"Bearer x_redirect_server="https://login/redirect", x_token_server="{}/oauth2/token/2""#,
+        server.uri()
+    );
+
+    // --- Query 1: no cached token -> 401 challenge -> acquire token-v1 -> 200.
+    Mock::given(method("POST"))
+        .and(path("/v1/statement"))
+        .and(body_string_contains("SELECT 1"))
+        .and(HeaderAbsent("authorization"))
+        .respond_with(
+            ResponseTemplate::new(401).insert_header("WWW-Authenticate", challenge1.as_str()),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/oauth2/token/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "token": "token-v1"
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/statement"))
+        .and(body_string_contains("SELECT 1"))
+        .and(header("authorization", "Bearer token-v1"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(finished_query_json()))
+        .mount(&server)
+        .await;
+
+    // --- Query 2: cache attaches (now-expired) token-v1 -> coordinator 401s ->
+    // acquire token-v2 -> retry must send a SINGLE Bearer token-v2 header.
+    Mock::given(method("POST"))
+        .and(path("/v1/statement"))
+        .and(body_string_contains("SELECT 2"))
+        .and(header("authorization", "Bearer token-v1"))
+        .respond_with(
+            ResponseTemplate::new(401).insert_header("WWW-Authenticate", challenge2.as_str()),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/oauth2/token/2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "token": "token-v2"
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/statement"))
+        .and(body_string_contains("SELECT 2"))
+        .and(SingleBearer("token-v2"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(finished_query_json()))
+        .mount(&server)
+        .await;
+
+    let handler = Arc::new(RecordingHandler {
+        seen: Mutex::new(vec![]),
+    });
+    let client = client_for(&server, handler.clone());
+
+    client.get_all::<Row>("SELECT 1").await.expect("query 1 ok");
+    client.get_all::<Row>("SELECT 2").await.expect("query 2 ok");
 }
 
 /// End-to-end against a real Trino coordinator configured for OAuth2. Not run

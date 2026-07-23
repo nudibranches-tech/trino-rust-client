@@ -1178,7 +1178,6 @@ impl Client {
             add_session_header(req, &session)
         };
 
-        let req = self.auth_req(req);
         self.send(req, StatusCode::OK, |resp| async {
             let text = resp.text().await?;
 
@@ -1202,7 +1201,6 @@ impl Client {
             add_prepare_header(req, &session)
         };
 
-        let req = self.auth_req(req);
         self.send(req, StatusCode::OK, |resp| async {
             let text = resp.text().await?;
             let data: QueryResult<T> = serde_json::from_str(&text)
@@ -1222,7 +1220,6 @@ impl Client {
             add_prepare_header(req, &session)
         };
 
-        let req = self.auth_req(req);
         self.send(req, StatusCode::NO_CONTENT, |_| async { Ok(()) })
             .await
     }
@@ -1254,10 +1251,18 @@ impl Client {
         F: FnOnce(Response) -> Fut,
         Fut: std::future::Future<Output = Result<R>>,
     {
-        // Clone up front so an OAuth2 401 can be retried with a fresh token.
-        // Bodies here are `String`s, so `try_clone` always succeeds.
+        // Capture the token we are about to authenticate with (if any) so the
+        // single-flight refresh can tell whether another task already rotated it.
+        let sent_token = match self.auth.as_ref() {
+            Some(Auth::OAuth2(state)) => state.cached_token(),
+            _ => None,
+        };
+        // Clone the UN-authed builder up front so an OAuth2 401 can be retried
+        // with exactly one fresh token header (`bearer_auth` appends, so auth is
+        // applied only after the clone is taken). Bodies here are `String`s, so
+        // `try_clone` always succeeds.
         let retry_req = req.try_clone();
-        let resp = req.send().await?;
+        let resp = self.auth_req(req).send().await?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             if let (Some(Auth::OAuth2(state)), Some(retry_req)) = (self.auth.as_ref(), retry_req) {
@@ -1267,7 +1272,8 @@ impl Client {
                     .and_then(|v| v.to_str().ok())
                     .and_then(crate::auth::parse_www_authenticate)
                 {
-                    self.acquire_oauth2_token(state, &challenge).await?;
+                    self.acquire_oauth2_token(state, &challenge, sent_token)
+                        .await?;
                     let resp = self.auth_req(retry_req).send().await?;
                     return self
                         .finish_send(resp, expected_status, handle_response)
@@ -1309,11 +1315,12 @@ impl Client {
         &self,
         state: &std::sync::Arc<crate::auth::OAuth2State>,
         challenge: &crate::auth::Challenge,
+        sent_token: Option<String>,
     ) -> Result<()> {
-        let before = state.cached_token();
         let _guard = state.acquire.lock().await;
-        // Someone else finished the flow while we waited for the lock.
-        if state.cached_token() != before {
+        // Someone else finished the flow (rotating the token this request was
+        // sent with) while we waited for the lock — reuse it.
+        if state.cached_token() != sent_token {
             return Ok(());
         }
         let token = crate::auth::run_flow(&self.client, state, challenge).await?;
