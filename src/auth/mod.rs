@@ -1,5 +1,8 @@
 use std::fmt;
 
+mod oauth2;
+pub use oauth2::{parse_www_authenticate, Challenge};
+
 #[derive(Clone)]
 pub enum Auth {
     Basic(String, Option<String>),

@@ -42,6 +42,10 @@ pub enum Error {
     /// or rolling back without one.
     #[error("transaction error: {0}")]
     Transaction(String),
+    /// The interactive OAuth2 authentication flow failed (no token server in the
+    /// challenge, the token endpoint returned an error, or it timed out).
+    #[error("oauth2 error: {0}")]
+    OAuth2(String),
     #[error("inconsistent data")]
     InconsistentData,
     #[error("reach max attempt: {0}")]
