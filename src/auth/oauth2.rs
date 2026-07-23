@@ -139,11 +139,19 @@ pub(crate) async fn run_flow(
     let mut url = challenge.x_token_server.clone();
 
     for _ in 0..state.max_poll_attempts {
-        if tokio::time::Instant::now() >= deadline {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
             break;
         }
-        let resp = client.get(&url).send().await?;
-        let body: TokenResponse = resp.json().await?;
+        let body = match tokio::time::timeout(remaining, async {
+            let resp = client.get(&url).send().await?;
+            resp.json::<TokenResponse>().await
+        })
+        .await
+        {
+            Ok(result) => result?, // network/decode error propagates as before
+            Err(_elapsed) => break, // exceeded poll_timeout on this poll
+        };
 
         if let Some(err) = body.error {
             return Err(Error::OAuth2(format!(
@@ -322,6 +330,41 @@ mod tests {
         match err {
             crate::error::Error::OAuth2(msg) => assert!(msg.contains("access_denied")),
             other => panic!("expected OAuth2 error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_flow_bounded_by_poll_timeout_when_server_stalls() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/token/stall"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_secs(30))
+                    .set_body_json(serde_json::json!({ "token": "never-arrives-in-time" })),
+            )
+            .mount(&server)
+            .await;
+
+        let state = OAuth2State::new(
+            Arc::new(BrowserRedirectHandler),
+            10,
+            Duration::from_millis(150),
+        );
+        let challenge = Challenge {
+            x_redirect_server: String::new(),
+            x_token_server: format!("{}/token/stall", server.uri()),
+        };
+
+        let err = run_flow(&reqwest::Client::new(), &state, &challenge)
+            .await
+            .unwrap_err();
+        match err {
+            crate::error::Error::OAuth2(msg) => assert!(msg.contains("did not complete")),
+            other => panic!("expected OAuth2 timeout error, got {other:?}"),
         }
     }
 }
