@@ -15,6 +15,7 @@ Fork rationale  :
 ### authn:
 - Basic Auth
 - Jwt Auth
+- Interactive OAuth2 (browser-based)
 
 ### protocols:
 - Spooling Protocol (for efficient large result set handling)
@@ -110,6 +111,39 @@ async fn main() {
     }
 }
 ```
+
+### Interactive OAuth2 example
+
+Trino's OAuth2 authentication makes the **coordinator** the OAuth client: on a
+`401` the client opens the coordinator-supplied login URL in a browser (and
+prints it to stderr as a fallback), polls Trino's token endpoint until you finish
+the IdP login, then retries with the bearer token. The token is cached in memory
+for the life of the `Client`. Requires TLS to the coordinator.
+
+```rust
+use trino_rust_client::auth::Auth;
+use trino_rust_client::{ClientBuilder, Row};
+
+#[tokio::main]
+async fn main() {
+    let cli = ClientBuilder::new("user", "coordinator.example.com")
+        .secure(true)
+        .auth(Auth::new_oauth2())
+        .catalog("catalog")
+        .build()
+        .unwrap();
+
+    let data = cli.get_all::<Row>("select 1").await.unwrap().into_vec();
+
+    for r in data {
+        println!("{:?}", r)
+    }
+}
+```
+
+Supply a custom presentation strategy (instead of opening a browser) with
+`Auth::new_oauth2_with_handler(Arc::new(my_handler))`, and tune the token poll
+loop with `.with_poll(max_attempts, timeout)`.
 
 ### Example dealing with fields not known at compile time
 ```rust
