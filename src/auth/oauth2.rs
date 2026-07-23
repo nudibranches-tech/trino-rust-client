@@ -1,7 +1,9 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::error::Result;
+use serde::Deserialize;
+
+use crate::error::{Error, Result};
 
 /// The redirect + token endpoints extracted from a Trino `WWW-Authenticate`
 /// Bearer challenge.
@@ -86,10 +88,7 @@ pub struct OAuth2State {
     #[allow(dead_code)]
     pub(crate) acquire: tokio::sync::Mutex<()>,
     pub(crate) handler: Arc<dyn RedirectHandler>,
-    // Read by the poll loop landing in a later task; unused until then.
-    #[allow(dead_code)]
     pub(crate) max_poll_attempts: usize,
-    #[allow(dead_code)]
     pub(crate) poll_timeout: Duration,
 }
 
@@ -112,6 +111,62 @@ impl OAuth2State {
     pub fn cached_token(&self) -> Option<String> {
         self.token.read().unwrap().clone()
     }
+}
+
+#[derive(Deserialize)]
+struct TokenResponse {
+    token: Option<String>,
+    #[serde(rename = "nextUri")]
+    next_uri: Option<String>,
+    error: Option<String>,
+}
+
+/// Present the login URL, then poll the token server following `nextUri` until a
+/// token is returned, an error is reported, or attempts/timeout are exhausted.
+// Called from `Client::send`'s 401 handling landing in a later task; unused
+// outside tests until then.
+#[allow(dead_code)]
+pub(crate) async fn run_flow(
+    client: &reqwest::Client,
+    state: &OAuth2State,
+    challenge: &Challenge,
+) -> Result<String> {
+    if !challenge.x_redirect_server.is_empty() {
+        state.handler.redirect(&challenge.x_redirect_server)?;
+    }
+
+    let deadline = tokio::time::Instant::now() + state.poll_timeout;
+    let mut url = challenge.x_token_server.clone();
+
+    for _ in 0..state.max_poll_attempts {
+        if tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        let resp = client.get(&url).send().await?;
+        let body: TokenResponse = resp.json().await?;
+
+        if let Some(err) = body.error {
+            return Err(Error::OAuth2(format!(
+                "token endpoint returned error: {err}"
+            )));
+        }
+        if let Some(token) = body.token {
+            return Ok(token);
+        }
+        match body.next_uri {
+            Some(next) => url = next,
+            None => {
+                return Err(Error::OAuth2(
+                    "token endpoint response had neither token nor nextUri".to_string(),
+                ))
+            }
+        }
+    }
+
+    Err(Error::OAuth2(format!(
+        "authentication did not complete within {} attempts / {:?}",
+        state.max_poll_attempts, state.poll_timeout
+    )))
 }
 
 #[cfg(test)]
@@ -182,5 +237,91 @@ mod tests {
         );
         *state.token.write().unwrap() = Some("tok".to_string());
         assert_eq!(state.cached_token().as_deref(), Some("tok"));
+    }
+
+    struct RecordingHandler {
+        seen: std::sync::Mutex<Vec<String>>,
+    }
+    impl RedirectHandler for RecordingHandler {
+        fn redirect(&self, url: &str) -> Result<()> {
+            self.seen.lock().unwrap().push(url.to_string());
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn run_flow_follows_next_uri_then_returns_token() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // First poll -> keep polling (nextUri to /token/step2).
+        Mock::given(method("GET"))
+            .and(path("/token/step1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "nextUri": format!("{}/token/step2", server.uri())
+            })))
+            .mount(&server)
+            .await;
+        // Second poll -> token ready.
+        Mock::given(method("GET"))
+            .and(path("/token/step2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "token": "final-token"
+            })))
+            .mount(&server)
+            .await;
+
+        let handler = Arc::new(RecordingHandler {
+            seen: std::sync::Mutex::new(vec![]),
+        });
+        let state = OAuth2State::new(handler.clone(), 10, Duration::from_secs(30));
+        let challenge = Challenge {
+            x_redirect_server: "https://login.example/redirect".to_string(),
+            x_token_server: format!("{}/token/step1", server.uri()),
+        };
+
+        let token = run_flow(&reqwest::Client::new(), &state, &challenge)
+            .await
+            .expect("flow should succeed");
+
+        assert_eq!(token, "final-token");
+        assert_eq!(
+            handler.seen.lock().unwrap().as_slice(),
+            &["https://login.example/redirect".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn run_flow_surfaces_error_field() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/token/err"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "error": "access_denied"
+            })))
+            .mount(&server)
+            .await;
+
+        let state = OAuth2State::new(
+            Arc::new(BrowserRedirectHandler),
+            10,
+            Duration::from_secs(30),
+        );
+        let challenge = Challenge {
+            x_redirect_server: String::new(),
+            x_token_server: format!("{}/token/err", server.uri()),
+        };
+
+        let err = run_flow(&reqwest::Client::new(), &state, &challenge)
+            .await
+            .unwrap_err();
+        match err {
+            crate::error::Error::OAuth2(msg) => assert!(msg.contains("access_denied")),
+            other => panic!("expected OAuth2 error, got {other:?}"),
+        }
     }
 }
