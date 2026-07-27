@@ -75,7 +75,7 @@ members = [".", "trino-rust-client-macros", "integration_tests"]
 [workspace.dependencies]
 async-stream = "0.3.6"
 backon = "1.6.0"
-base64 = "0.22"
+base64 = "0.23"
 bigdecimal = "0.4.10"
 chrono = "0.4.45"
 chrono-tz = "0.10.4"
