@@ -45,6 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # Keep this in sync with `rust-version` in Cargo.toml.
-      - uses: dtolnay/rust-toolchain@1.86.0
+      - uses: dtolnay/rust-toolchain@1.88.0
       - name: Check on the MSRV toolchain
         run: cargo check --all-features

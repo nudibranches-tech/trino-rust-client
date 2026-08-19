@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 - **Breaking:** `TransactionId` now models what the `X-Trino-Transaction-Id` header actually carries: `NoTransaction | Id(String)`. The `StartTransaction`, `RollBack` and `Commit` variants are removed — they are SQL statements, not header values, and sending them produced a header Trino does not accept. `to_str` is replaced by `as_header_value(&self) -> &str` and `from_str` by the infallible `from_header_value(&str) -> Self`. `TransactionId` is no longer `Copy` (it now owns a `String`); it is still `Clone`, and now also `PartialEq` and `Eq`. See the [migration guide](MIGRATION.md)
 - **Breaking:** `Auth` is now `#[non_exhaustive]` and has a new `OAuth2` variant. Exhaustive `match` on `Auth` must add a wildcard arm
 - Updated the `base64` requirement from 0.22 to 0.23
+- Raised the minimum supported Rust version (MSRV) from **1.86** to **1.88**. The `icu_*` crates, pulled in transitively through `url` → `idna`, now require rustc 1.88; the CI job that enforces the MSRV was bumped to match
 
 ## [0.11.0] - 2026-07-19
 
