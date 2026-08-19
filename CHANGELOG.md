@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-19
+
+> Upgrading from 0.11.x? See the [migration guide](MIGRATION.md).
+
 ### Added
+- Configurable retry/backoff via `RetryPolicy` (`max_retries`, `min_delay`, `max_delay`, `jitter`) and `ClientBuilder::retry_policy`. The default preserves the previous behaviour (3 retries, 1s→2s, no jitter). Retries are now **idempotency-aware**: idempotent page fetches (`GET nextUri`) retry on any transient failure (HTTP 502/503/504, connect/timeout), while query submission (`POST /v1/statement`) only retries when the request was definitely not processed (503, connection failures) so a non-idempotent statement (`INSERT`/DDL via `execute`) is never submitted twice. Query, decode, protocol and other errors fail fast
 - `Client::begin_transaction`, `Client::commit` and `Client::rollback` for driving Trino transactions, plus `Client::transaction_id` / `Client::set_transaction_id` to inspect and set the session's transaction at runtime (previously only settable at build time via `ClientBuilder::transaction_id`). `begin_transaction` verifies that the coordinator actually returned a transaction id, so `Ok(())` means a transaction is active — a `START TRANSACTION` that succeeds without a usable `X-Trino-Started-Transaction-Id` (a header-stripping proxy, or the `NONE` sentinel) is reported as `Error::Transaction` instead of silently leaving later statements outside any transaction
 - `Error::Transaction` — returned when a transaction operation is attempted in a state that does not allow it (starting one while another is active, or committing/rolling back without one)
 - `TransactionId::is_active`
@@ -20,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 - **Breaking:** `TransactionId` now models what the `X-Trino-Transaction-Id` header actually carries: `NoTransaction | Id(String)`. The `StartTransaction`, `RollBack` and `Commit` variants are removed — they are SQL statements, not header values, and sending them produced a header Trino does not accept. `to_str` is replaced by `as_header_value(&self) -> &str` and `from_str` by the infallible `from_header_value(&str) -> Self`. `TransactionId` is no longer `Copy` (it now owns a `String`); it is still `Clone`, and now also `PartialEq` and `Eq`. See the [migration guide](MIGRATION.md)
 - **Breaking:** `Auth` is now `#[non_exhaustive]` and has a new `OAuth2` variant. Exhaustive `match` on `Auth` must add a wildcard arm
+- Updated the `base64` requirement from 0.22 to 0.23
 
 ## [0.11.0] - 2026-07-19
 
@@ -29,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 - `Client::get_all`, `Client::get` and `Client::execute` now accept `impl Into<String>` for the SQL, so `&str` literals work without `.to_string()` (consistent with `Client::stream`). Existing `String` call sites are unaffected
 - `VarBinary` type for Trino `VARBINARY` columns — decodes/encodes the base64 wire format into raw bytes (`base64` is now a core dependency). Confirmed that `Json` (`serde_json::Value`) and `TimestampWithTimeZone` (`chrono::DateTime<FixedOffset>`) already decode, and added tests
 - Crate-level documentation with a runnable quickstart, and doc comments on the core public API (`Client`, `ClientBuilder`, `get_all`/`get`/`get_next`/`cancel`, `ExecuteResult`). docs.rs now builds with all features
-- Configurable retry/backoff via `RetryPolicy` (`max_retries`, `min_delay`, `max_delay`, `jitter`) and `ClientBuilder::retry_policy`. The default preserves the previous behaviour (3 retries, 1s→2s, no jitter). Retries are now **idempotency-aware**: idempotent page fetches (`GET nextUri`) retry on any transient failure (HTTP 502/503/504, connect/timeout), while query submission (`POST /v1/statement`) only retries when the request was definitely not processed (503, connection failures) so a non-idempotent statement (`INSERT`/DDL via `execute`) is never submitted twice. Query, decode, protocol and other errors fail fast
 - `QueryError::kind()` returning a `#[non_exhaustive]` `TrinoErrorKind` enum, for ergonomic, discoverable matching on the common Trino error names (`TableNotFound`, `SchemaNotFound`, `SyntaxError`, …) without comparing raw strings; falls back to `TrinoErrorKind::Other`
 - `Client::stream` — lazily stream query rows page by page without buffering the whole result set in memory (Direct and Spooled protocols). Returns a `RowStream` that resolves the result columns up front (`RowStream::columns() -> &[Column]`), implements `futures::Stream`, is `Send`/`Unpin`, and best-effort cancels the query on the coordinator if dropped before completion
 
@@ -125,7 +130,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [0.1.0] - 2020-10-01
 - Initial release
 
-[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.11.0...HEAD
+[Unreleased]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.12.0...HEAD
+[0.12.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.3...0.10.0
 [0.9.3]: https://github.com/nudibranches-tech/trino-rust-client/compare/0.9.2...0.9.3
