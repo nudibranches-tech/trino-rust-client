@@ -15,6 +15,22 @@ Always verify **both** feature configurations (`default` and `spooling`). The
 `spooling` codec dependencies are gated behind the feature; `base64` is a core
 dependency (needed by `VarBinary`).
 
+The TLS backend is a feature too (`rustls-aws-lc-rs` — default, `rustls-ring`,
+`rustls-no-provider`; one is required, see `src/tls.rs`), so changes touching
+`reqwest`, `ssl.rs` or `ClientBuilder::build` should also check:
+
+```bash
+cargo test --no-default-features --features rustls-no-provider \
+    --workspace --exclude trino-integration-tests
+cargo test --no-default-features --features rustls-ring,spooling \
+    --workspace --exclude trino-integration-tests
+```
+
+Building a client needs a crypto provider, and a bare `rustls-no-provider`
+build has none (`reqwest` panics). Tests that build one are gated on
+`#[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]` — the two
+backends that carry a provider. Gate new ones the same way.
+
 ## Workflow
 
 - **Never commit directly to `main`.** Pre-commit hooks (`.pre-commit-config.yaml`)
