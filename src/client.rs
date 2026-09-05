@@ -1400,10 +1400,20 @@ mod tests {
     use http::StatusCode;
     use reqwest::header::HeaderValue;
 
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     use super::*;
     use crate::client::{decode_kv_from_header, need_retry_fetch, need_retry_submit};
     use crate::error::Error;
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     use crate::transaction::TransactionId;
+
+    /// The selected TLS backend carries (or installs) a rustls crypto provider,
+    /// so building a client works with no setup from the caller.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
+    #[test]
+    fn test_build_with_provided_tls_backend() {
+        assert!(ClientBuilder::new("user", "localhost").build().is_ok());
+    }
 
     #[test]
     fn test_decode_kv_from_header_plus_sign_to_space() {
@@ -1469,12 +1479,16 @@ mod tests {
         )));
     }
 
+    // Building a client needs a rustls crypto provider.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn transaction_id_defaults_to_no_transaction() {
         let client = ClientBuilder::new("user", "localhost").build().unwrap();
         assert_eq!(client.transaction_id().await, TransactionId::NoTransaction);
     }
 
+    // Building a client needs a rustls crypto provider.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn set_transaction_id_is_observable() {
         let client = ClientBuilder::new("user", "localhost").build().unwrap();
@@ -1483,6 +1497,8 @@ mod tests {
         assert_eq!(client.transaction_id().await, id);
     }
 
+    // Building a client needs a rustls crypto provider.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn begin_transaction_rejects_nesting() {
         let client = ClientBuilder::new("user", "localhost").build().unwrap();
@@ -1497,6 +1513,8 @@ mod tests {
         );
     }
 
+    // Building a client needs a rustls crypto provider.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn commit_without_transaction_is_rejected() {
         let client = ClientBuilder::new("user", "localhost").build().unwrap();
@@ -1507,6 +1525,8 @@ mod tests {
         );
     }
 
+    // Building a client needs a rustls crypto provider.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn rollback_without_transaction_is_rejected() {
         let client = ClientBuilder::new("user", "localhost").build().unwrap();
