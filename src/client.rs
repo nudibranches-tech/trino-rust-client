@@ -296,6 +296,8 @@ impl ClientBuilder {
     }
 
     pub fn build(self) -> Result<Client> {
+        crate::tls::prepare_crypto_provider();
+
         let session = self.session.build()?;
         let retry = self.retry.clone();
 
