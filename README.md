@@ -20,6 +20,9 @@ Fork rationale  :
 ### protocols:
 - Spooling Protocol (for efficient large result set handling)
 
+### tls:
+- Selectable rustls crypto provider (`aws-lc-rs`, `ring`, or bring your own)
+
 ## Installation
 
 ```toml
@@ -29,6 +32,47 @@ trino-rust-client = "0.12.0"
 
 # For spooling protocol support
 trino-rust-client = { version = "0.12.0", features = ["spooling"] }
+```
+
+### TLS provider
+
+HTTPS goes through [rustls](https://docs.rs/rustls); the cryptographic provider
+behind it is picked with a cargo feature. One of them is required — a build with
+none fails with a `compile_error!`.
+
+| feature | provider | setup |
+| --- | --- | --- |
+| `rustls-aws-lc-rs` *(default)* | `aws-lc-rs` | none |
+| `rustls-ring` | `ring` | none — installed as the process default provider on the first `ClientBuilder::build`, unless one is already installed |
+| `rustls-no-provider` | yours | install a `CryptoProvider` before building a client — `reqwest` panics without one |
+
+`aws-lc-rs` pulls in `aws-lc-sys`. To leave it out, turn the default feature off
+and pick another provider:
+
+```toml
+[dependencies]
+trino-rust-client = { version = "0.12.0", default-features = false, features = ["rustls-ring"] }
+```
+
+Turning the default feature off only pays off if nothing else in the graph
+enables it: with both features on you get `aws-lc-sys` compiled *and* `ring`
+installed as the process default provider, so the C build stays and `ring` is
+what `reqwest` ends up using.
+
+With `rustls-no-provider`, install the provider yourself before any client is
+built. Depend on the same rustls major as `reqwest` (`0.23`), otherwise the
+provider you install is not the one `reqwest` reads:
+
+```toml
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+```
+
+```rust
+rustls::crypto::ring::default_provider()
+    .install_default()
+    .expect("install rustls crypto provider");
+
+let client = ClientBuilder::new("user", "localhost").build()?;
 ```
 
 ## Upgrading

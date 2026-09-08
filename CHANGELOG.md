@@ -7,12 +7,17 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 
+### Added
+- Selectable rustls crypto provider through cargo features: `rustls-aws-lc-rs` (default, unchanged behaviour), `rustls-ring` and `rustls-no-provider`. `reqwest`'s `rustls` feature hardwires `aws-lc-rs`, and because cargo features are additive there was no way for a dependent to opt out of the heavy `aws-lc-sys` C build. With `default-features = false, features = ["rustls-ring"]` (or `rustls-no-provider` plus your own `CryptoProvider`), `aws-lc-rs` no longer enters the dependency graph [#70](https://github.com/nudibranches-tech/trino-rust-client/issues/70)
+- Under `rustls-ring`, `ClientBuilder::build` installs `ring` as the process default rustls provider when none is installed yet, so nothing has to be set up in `main`. A bare `rustls-no-provider` build leaves that to the caller — `reqwest` panics while building its client if no provider is installed
+
+### Changed
+- **Breaking:** the crate's default features now include `rustls-aws-lc-rs`, and a build with no TLS backend feature fails with a `compile_error!`. `default-features = false` previously still got rustls with `aws-lc-rs` (the feature was hardwired on the `reqwest` dependency); it now has to name a TLS backend feature. See the [migration guide](MIGRATION.md)
+- `Client::execute` makes one HTTP request fewer: the final page is read from its pagination loop instead of being re-fetched
+
 ### Fixed
 - **`Client::execute` bypassed authentication on its final result fetch.** It ended by re-fetching the last page with a bare GET that skipped the shared request pipeline, so the request carried no `Authorization` (for any `Auth` variant), `X-Trino-User` or `User-Agent`, and got neither the `RetryPolicy` nor the OAuth2 `401`-challenge retry. `execute` therefore failed against any authenticated coordinator — as a misleading `Error::HttpError("error decoding response body")` rather than `Error::HttpNotOk`, and only after the statement had run — while `get_all` / `stream` succeeded on the same client. It now reports the last page of its own pagination loop
 - `Client::execute` no longer returns `Error::InternalError("No next URI available for execution result")` when the first response carries no `next_uri`
-
-### Changed
-- `Client::execute` makes one HTTP request fewer: the final page is read from its pagination loop instead of being re-fetched
 
 ### Deprecated
 - `error::TrinoRetryResult` and `error::TrinoStats` — unused, still `pub` (so not a breaking change), removal planned for the next major release

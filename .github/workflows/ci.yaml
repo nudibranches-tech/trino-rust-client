@@ -39,6 +39,46 @@ jobs:
       - name: Run integration tests
         run: cargo test --package trino-integration-tests
 
+  tls_features:
+    name: TLS backend features
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
+        rust: [stable, nightly]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install latest ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Run cargo test (bring-your-own provider)
+        run: cargo test --no-default-features --features rustls-no-provider --workspace --exclude trino-integration-tests
+
+      - name: Run cargo test (ring provider)
+        run: cargo test --no-default-features --features rustls-ring,spooling --workspace --exclude trino-integration-tests
+
+      # One step per configuration: `!`-negated commands are exempt from
+      # `set -e`, so chaining them in a single script would mask a failure.
+      - name: aws-lc-rs must be out of the rustls-no-provider graph
+        run: |
+          cargo tree --no-default-features --features rustls-no-provider > tree.txt
+          ! grep -q aws-lc tree.txt
+
+      - name: aws-lc-rs must be out of the rustls-ring graph
+        run: |
+          cargo tree --no-default-features --features rustls-ring > tree.txt
+          ! grep -q aws-lc tree.txt
+
+      - name: A build with no TLS backend must fail on the feature check
+        run: |
+          ! cargo check --no-default-features 2> check.log
+          grep -q "needs a TLS backend feature" check.log
+
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest

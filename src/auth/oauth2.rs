@@ -242,9 +242,22 @@ mod tests {
         assert_eq!(state.cached_token().as_deref(), Some("tok"));
     }
 
+    /// A client for the flow under test.
+    ///
+    /// `reqwest::Client::new()` panics under `rustls-ring` unless a crypto
+    /// provider is installed, and here nothing else in the process has
+    /// necessarily built one yet.
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
+    fn test_http_client() -> reqwest::Client {
+        crate::tls::prepare_crypto_provider();
+        reqwest::Client::new()
+    }
+
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     struct RecordingHandler {
         seen: std::sync::Mutex<Vec<String>>,
     }
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     impl RedirectHandler for RecordingHandler {
         fn redirect(&self, url: &str) -> Result<()> {
             self.seen.lock().unwrap().push(url.to_string());
@@ -252,6 +265,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn run_flow_follows_next_uri_then_returns_token() {
         use wiremock::matchers::{method, path};
@@ -284,7 +298,7 @@ mod tests {
             x_token_server: format!("{}/token/step1", server.uri()),
         };
 
-        let token = run_flow(&reqwest::Client::new(), &state, &challenge)
+        let token = run_flow(&test_http_client(), &state, &challenge)
             .await
             .expect("flow should succeed");
 
@@ -295,6 +309,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn run_flow_surfaces_error_field() {
         use wiremock::matchers::{method, path};
@@ -319,7 +334,7 @@ mod tests {
             x_token_server: format!("{}/token/err", server.uri()),
         };
 
-        let err = run_flow(&reqwest::Client::new(), &state, &challenge)
+        let err = run_flow(&test_http_client(), &state, &challenge)
             .await
             .unwrap_err();
         match err {
@@ -328,6 +343,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
     #[tokio::test]
     async fn run_flow_bounded_by_poll_timeout_when_server_stalls() {
         use wiremock::matchers::{method, path};
@@ -354,7 +370,7 @@ mod tests {
             x_token_server: format!("{}/token/stall", server.uri()),
         };
 
-        let err = run_flow(&reqwest::Client::new(), &state, &challenge)
+        let err = run_flow(&test_http_client(), &state, &challenge)
             .await
             .unwrap_err();
         match err {

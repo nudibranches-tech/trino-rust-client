@@ -1,6 +1,11 @@
 //! Regression test: the transaction id Trino returns must be captured and sent
 //! on subsequent statements.
 
+// Every test here builds a client, which needs a rustls crypto provider — a
+// bring-your-own-provider build (`rustls-no-provider` without `rustls-ring`)
+// has none.
+#![cfg(any(feature = "rustls-aws-lc-rs", feature = "rustls-ring"))]
+
 use trino_rust_client::client::ClientBuilder;
 use trino_rust_client::error::Error;
 use trino_rust_client::transaction::TransactionId;

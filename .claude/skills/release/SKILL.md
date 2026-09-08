@@ -34,7 +34,8 @@ git checkout -b release/X.Y.Z
 - Finalize `CHANGELOG.md`: turn `## [Unreleased]` into `## [X.Y.Z] - <date>`
   (leave an empty `[Unreleased]` above it) and add the comparison link at the
   bottom (**no `v` prefix** — tags are `X.Y.Z`, e.g. `compare/0.10.0...0.11.0`).
-- Update the version in `README.md` install snippets (there are two).
+- Update the version in `README.md` install snippets (there are three: two
+  under Installation, one under TLS provider).
 - If the release has breaking changes, make sure `MIGRATION.md` covers them.
 - `cargo check` and `cargo check --features spooling`.
 - Commit `release X.Y.Z`, push the branch, open a PR.

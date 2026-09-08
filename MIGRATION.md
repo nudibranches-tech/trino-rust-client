@@ -3,6 +3,17 @@
 Guidance for upgrading across breaking releases. See [CHANGELOG.md](CHANGELOG.md)
 for the full list of changes.
 
+## Unreleased
+
+### `default-features = false` now needs a TLS backend feature
+
+The rustls crypto provider is selectable: `rustls-aws-lc-rs` (default),
+`rustls-ring` or `rustls-no-provider`. Builds with default features are
+unaffected. Builds with `default-features = false` used to get `aws-lc-rs`
+anyway and now have to add one of those features — `rustls-aws-lc-rs` to keep
+the same backend, `rustls-ring` to drop the `aws-lc-sys` C build. See the
+[README](README.md#tls-provider) for the feature matrix.
+
 ## 0.11.0 → 0.12.0
 
 ### Transactions (`TransactionId` reshaped)
