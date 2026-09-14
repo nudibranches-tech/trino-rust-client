@@ -100,7 +100,7 @@ tracing-subscriber = {version = "0.3.23", default-features = false, features = [
 trino-rust-client-macros = {version = "0.7.2", path = "trino-rust-client-macros"}
 url = "2.5.8"
 uuid = {version = "1.24.0", features = ["serde", "v4"]}
-zstd = "0.13"
+zstd = "0.14"
 
 [workspace.package]
 authors = ["nudibranches technologies <contact@nudibranches.tech"]
