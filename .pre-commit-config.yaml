@@ -13,6 +13,9 @@ repos:
   - id: pretty-format-toml
     args: [ --autofix ]
     exclude: ^.*Cargo.lock
+    # The hook does not pin toml-sort; 0.25 changed inline-table spacing and
+    # reformats every Cargo.toml.
+    additional_dependencies: [ toml-sort==0.24.4 ]
 
 # Rust
 - repo: https://github.com/doublify/pre-commit-rust
