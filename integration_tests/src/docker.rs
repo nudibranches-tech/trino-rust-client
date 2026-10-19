@@ -70,13 +70,14 @@ impl DockerCompose {
         );
         let output = cmd.output().expect("Failed to execute docker compose up");
 
+        // Put compose's own error in the panic: `error!` goes nowhere unless
+        // a subscriber is installed, and in CI this message is all there is.
         if !output.status.success() {
-            error!(
-                "Docker compose up failed: {}",
+            panic!(
+                "docker compose up failed ({}):\n{}",
+                output.status,
                 String::from_utf8_lossy(&output.stderr)
             );
-
-            panic!("Docker compose up failed!")
         }
 
         // Wait for the coordinator and worker to be healthy
