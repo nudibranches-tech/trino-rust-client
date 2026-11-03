@@ -17,6 +17,7 @@ paste = {workspace = true}
 regex = {workspace = true}
 # network dependencies
 reqwest = {workspace = true}
+rustls = {workspace = true, optional = true}
 # third party dependencies
 serde = {workspace = true}
 serde_json = {workspace = true}
@@ -44,7 +45,16 @@ path = "examples/spooling.rs"
 required-features = ["spooling"]
 
 [features]
-default = []
+default = ["rustls-aws-lc-rs"]
+# TLS backend. Exactly one provider is needed; the default keeps the historical
+# behaviour (reqwest's `rustls` feature, backed by `aws-lc-rs`).
+rustls-aws-lc-rs = ["reqwest/rustls"]
+# rustls without a built-in provider: install a `CryptoProvider` yourself before
+# building a `Client`.
+rustls-no-provider = ["reqwest/rustls-no-provider"]
+# `rustls-no-provider` plus `ring`, installed as the process default provider on
+# the first `ClientBuilder::build` if none is installed yet.
+rustls-ring = ["dep:rustls", "rustls-no-provider", "rustls/ring"]
 spooling = ["dep:zstd", "dep:lz4", "dep:flate2"]
 
 [package]
@@ -90,7 +100,11 @@ lz4 = "1.28"
 open = "5"
 paste = "1.0.15"
 regex = "1.13.1"
-reqwest = {version = "0.13.4", default-features = false, features = ["rustls", "json"]}
+reqwest = {version = "0.13.4", default-features = false, features = ["json"]}
+# Direct dependency only so `rustls-ring` can install `ring` as the process
+# default provider. Provider-free on purpose: rustls's default features would
+# pull `aws-lc-rs` back in.
+rustls = {version = "0.23.4", default-features = false, features = ["std"]}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0.150"
 thiserror = "2.0.18"
